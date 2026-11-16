@@ -33,7 +33,7 @@ Run the self-tests again any time with `test.bat` (results in `test-results.txt`
 | Add a track / import audio | + Track / Import Audio | Ctrl+T / Ctrl+I |
 | Undo / redo | Undo / Redo | Ctrl+Z / Ctrl+Y |
 
-- **Setup > Audio device**: pick your audio interface. ASIO drivers (MC-707, ASIO4ALL) give the lowest latency.
+- **Setup > Audio device**: pick your audio interface. ASIO drivers give the lowest latency.
 - Track 1 is armed on your first input. On any track: **I** picks the input, **A** arms it, **M** mutes, **S** solos.
 - Songs live in `Documents\EzDAWsIt\Projects`. If the app ever closes unexpectedly, it offers to restore your unsaved work next time.
 - Logs (useful when reporting a problem) are in `Documents\EzDAWsIt\Logs`.
