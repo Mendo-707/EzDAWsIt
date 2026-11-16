@@ -23,6 +23,11 @@ namespace ez
                      public juce::SettableTooltipClient
     {
     public:
+        /** The colour a clip is drawn in, everywhere (timeline, piano roll): its own if the user picked
+            one, else its track's, else blue for audio and green for MIDI. Evened out so every clip has
+            the same weight on screen. */
+        static juce::Colour colourFor (const te::Clip&);
+
         /** What the clip needs from the lanes it sits in. */
         struct Host
         {

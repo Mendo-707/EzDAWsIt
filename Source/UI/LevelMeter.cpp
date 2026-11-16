@@ -9,7 +9,7 @@ namespace ez
 {
     namespace
     {
-        const juce::Colour green { 0xff2f9a5c }, amber { 0xffd9b23a }, red { 0xffd03a3a };
+        const juce::Colour green = Theme::meterLow, amber = Theme::meterMid, red = Theme::meterHigh;
         constexpr float topDb = 6.0f;
 
         /** 0..1 along the bar: 0 dB sits at 90 %, -60 dB at the bottom. */
@@ -122,15 +122,15 @@ namespace ez
     void LevelMeter::paint (juce::Graphics& g)
     {
         auto r = getLocalBounds().toFloat();
-        g.fillAll (isMain() && horizontal ? Theme::panel : juce::Colour (0xff15171b));   // opaque: the transport behind / the meter's own background
+        g.fillAll (isMain() && horizontal ? Theme::panel : Theme::display);   // opaque: the transport behind / the meter's own background
 
         if (isMain() && horizontal)
         {
             // MAIN | bars | number
             g.setColour (Theme::display);
-            g.fillRoundedRectangle (r, 4.0f);
-            g.setColour (Theme::border);
-            g.drawRoundedRectangle (r.reduced (0.5f), 4.0f, 1.0f);
+            g.fillRoundedRectangle (r, (float) Theme::cornerRadius);
+            g.setColour (Theme::hairline);
+            g.drawRoundedRectangle (r.reduced (0.5f), (float) Theme::cornerRadius, 1.0f);
             auto inner = r.reduced (8.0f, 0.0f);
             g.setColour (shown.clipped ? red : Theme::text);
             g.setFont (Theme::font (Theme::captionFontSize, true));
@@ -156,8 +156,8 @@ namespace ez
 
         // Track meter: a clip light on top, two bars under it
         auto light = r.removeFromTop (4.0f);
-        g.setColour (shown.clipped ? red : Theme::display);
-        g.fillRect (light);
+        g.setColour (shown.clipped ? red : Theme::raised);
+        g.fillRoundedRectangle (light, 1.0f);
         r.removeFromTop (1.0f);
         const auto barWidth = (r.getWidth() - 1.0f) / 2.0f;
         drawBar (g, r.removeFromLeft (barWidth), shown.levelDb[0], shown.holdDb[0]);

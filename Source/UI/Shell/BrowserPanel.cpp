@@ -1047,9 +1047,22 @@ namespace ez
 
         if (item.kind == Kind::header)
         {
-            g.setColour (Theme::textDim);
-            g.setFont (Theme::font (Theme::captionFontSize, true));
-            g.drawText (item.name.toUpperCase(), r.withTrimmedLeft (4).withTrimmedBottom (4), juce::Justification::bottomLeft, true);
+            // A header that is a sentence ("No plugins yet: ...") is a hint, not a section title
+            if ((item.name.contains (": ") && ! item.name.startsWith ("Built-in: ")) || item.name.startsWith ("Nothing matches"))
+            {
+                auto hint = r.withTrimmedTop (2).toFloat();
+                g.setColour (Theme::raised.withAlpha (0.6f));
+                g.fillRoundedRectangle (hint, (float) Theme::smallRadius);
+                auto text = hint.toNearestInt().reduced (8, 0);
+                Icons::draw (g, Icon::help, text.removeFromLeft (12).toFloat().withSizeKeepingCentre (12.0f, 12.0f), Theme::textDim, 1.5f);
+                text.removeFromLeft (6);
+                g.setColour (Theme::textDim);
+                g.setFont (Theme::font (Theme::smallFontSize));
+                g.drawFittedText (item.name, text, juce::Justification::centredLeft, 2, 0.9f);
+                return;
+            }
+
+            drawCaption (g, item.name, r.withTrimmedLeft (4).withTrimmedBottom (4), juce::Justification::bottomLeft);
             return;
         }
 
@@ -1083,12 +1096,19 @@ namespace ez
             case Kind::effect: case Kind::header:   break;
         }
 
-        Icons::draw (g, icon, r.removeFromLeft (14).toFloat().withSizeKeepingCentre (14.0f, 14.0f), playing ? Theme::accent : Theme::textDim);
+        // The icon on a small tile, like a file in a library
+        {
+            const auto tile = r.removeFromLeft (22).toFloat().withSizeKeepingCentre (22.0f, 22.0f);
+            g.setColour (playing ? Theme::accent.withAlpha (0.2f) : selected ? Theme::hover : Theme::raised);
+            g.fillRoundedRectangle (tile, (float) Theme::smallRadius);
+            Icons::draw (g, icon, tile.withSizeKeepingCentre (13.0f, 13.0f), playing ? Theme::accent : selected ? Theme::text : Theme::textDim, 1.6f);
+        }
+
         r.removeFromLeft (8);
 
         auto top = r.removeFromTop (r.getHeight() / 2 + 1);
         g.setColour (Theme::text);
-        g.setFont (Theme::font (Theme::baseFontSize - 0.5f));
+        g.setFont (Theme::font (Theme::baseFontSize - 0.5f, selected ? Theme::Weight::semibold : Theme::Weight::medium));
         g.drawText (item.name, top, juce::Justification::bottomLeft, true);
         g.setColour (Theme::textDim);
         g.setFont (Theme::font (Theme::smallFontSize - 0.5f));

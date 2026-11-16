@@ -168,21 +168,47 @@ namespace ez
         }
 
         if (style == Style::ghost && ! on && (isMouseOver || isButtonDown))
-            fill = Theme::raised;
+            fill = isButtonDown ? Theme::hover.brighter (0.05f) : Theme::hover;
         else if (isButtonDown)
-            fill = fill.brighter (0.15f);
+            fill = fill.brighter (0.12f);
         else if (isMouseOver)
-            fill = fill.brighter (0.07f);
+            fill = fill == Theme::raised ? Theme::hover : fill.brighter (0.08f);
+
+        if (! isEnabled())
+        {
+            fill = fill.withMultipliedAlpha (0.5f);
+            outline = outline.withMultipliedAlpha (0.5f);
+            content = content.withMultipliedAlpha (0.45f);
+        }
+
+        // Filled buttons (primary, play, record) glow faintly in their own colour when hovered
+        if ((style == Style::primary || style == Style::play || fillOverride.has_value()) && isMouseOver && isEnabled())
+        {
+            g.setColour (fill.withAlpha (0.25f));
+            g.fillRoundedRectangle (bounds.expanded (1.5f), radius + 1.5f);
+        }
 
         g.setColour (fill);
         g.fillPath (shape);
+
+        if (! isButtonDown && fill.getAlpha() > 0 && bounds.getHeight() > 14.0f)
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (shape);
+            g.setColour (juce::Colours::white.withAlpha (on ? 0.04f : 0.035f));
+            g.fillRect (bounds.withHeight (bounds.getHeight() * 0.5f));
+        }
+
+        if (isMouseOver && style == Style::normal && ! on)
+            outline = outline.brighter (0.15f);
+
         g.setColour (outline);
         g.strokePath (shape, juce::PathStrokeType (1.0f));
 
         // Content: icon then text, centred as a group
         const auto hasText = showText && getButtonText().isNotEmpty();
         const auto iconSize = juce::jmin (16.0f, (float) getHeight() - 10.0f);
-        const auto font = Theme::font (Theme::baseFontSize - 0.5f, on || style == Style::primary);
+        const auto font = Theme::font (Theme::baseFontSize - 0.5f, on || style == Style::primary ? Theme::Weight::semibold : Theme::Weight::medium);
         const auto textWidth = hasText ? (float) juce::GlyphArrangement::getStringWidthInt (font, getButtonText()) : 0.0f;
         const auto iconWidth = icon != Icon::none ? iconSize : 0.0f;
         const auto contentWidth = iconWidth + (hasText && icon != Icon::none ? 6.0f : 0.0f) + textWidth;
@@ -217,8 +243,14 @@ namespace ez
 
         if (on || isMouseOver)
         {
-            g.setColour (on ? Theme::selectedRow : Theme::raised);
+            g.setColour (on ? Theme::selectedRow : Theme::hover.withAlpha (0.7f));
             g.fillRoundedRectangle (r.toFloat(), (float) Theme::cornerRadius);
+        }
+
+        if (on)   // a short accent bar at the left: where you are
+        {
+            g.setColour (Theme::accent);
+            g.fillRoundedRectangle (juce::Rectangle<float> (2.0f, (float) r.getCentreY() - 7.0f, 3.0f, 14.0f), 1.5f);
         }
 
         r.removeFromLeft (10);
@@ -232,8 +264,8 @@ namespace ez
         if (showChevron)
             Icons::draw (g, Icon::chevronRight, r.removeFromRight (22).toFloat().withSizeKeepingCentre (11.0f, 11.0f), Theme::textDim);
 
-        g.setColour (Theme::text);
-        g.setFont (Theme::font (Theme::baseFontSize - 0.5f, on));
+        g.setColour (on || isMouseOver ? Theme::text : Theme::text.withAlpha (0.88f));
+        g.setFont (Theme::font (Theme::baseFontSize - 0.5f, on ? Theme::Weight::semibold : Theme::Weight::regular));
         g.drawText (getName(), r, juce::Justification::centredLeft, true);
     }
 
@@ -317,12 +349,58 @@ namespace ez
     }
 
     //==============================================================================
-    void drawLcd (juce::Graphics& g, juce::Rectangle<int> area)
+    void drawCard (juce::Graphics& g, juce::Rectangle<float> r, bool elevated, bool highlighted, float radius)
+    {
+        if (elevated)
+            Theme::drawShadow (g, r, radius, 1);
+
+        const auto top = highlighted ? Theme::raised.brighter (0.06f) : Theme::raised;
+        const auto bottom = highlighted ? Theme::raised : Theme::panel;
+        g.setGradientFill (juce::ColourGradient::vertical (top, r.getY(), bottom, r.getBottom()));
+        g.fillRoundedRectangle (r, radius);
+
+        // The top edge catches the light
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (r.withHeight (radius + 1.0f).toNearestInt());
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
+            g.drawRoundedRectangle (r.reduced (0.5f).withTrimmedBottom (-1.0f), radius, 1.0f);
+        }
+
+        g.setColour (highlighted ? Theme::accent : Theme::hairline.brighter (0.12f));
+        g.drawRoundedRectangle (r.reduced (0.5f), radius, highlighted ? 1.5f : 1.0f);
+    }
+
+    void drawWell (juce::Graphics& g, juce::Rectangle<float> r, float radius)
     {
         g.setColour (Theme::display);
-        g.fillRoundedRectangle (area.toFloat(), (float) Theme::cornerRadius);
+        g.fillRoundedRectangle (r, radius);
+
+        // A shadow along the top edge: the well sits below the card
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            juce::Path shape;
+            shape.addRoundedRectangle (r, radius);
+            g.reduceClipRegion (shape);
+            g.setGradientFill (juce::ColourGradient::vertical (juce::Colours::black.withAlpha (0.35f), r.getY(),
+                                                               juce::Colours::transparentBlack, r.getY() + 5.0f));
+            g.fillRect (r.withHeight (5.0f));
+        }
+
         g.setColour (Theme::laneSeparator);
-        g.drawRoundedRectangle (area.toFloat().reduced (0.5f), (float) Theme::cornerRadius, 1.0f);
+        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
+    }
+
+    void drawCaption (juce::Graphics& g, const juce::String& text, juce::Rectangle<int> area, juce::Justification justification)
+    {
+        g.setColour (Theme::textDim);
+        g.setFont (Theme::font (Theme::captionFontSize, Theme::Weight::semibold).withExtraKerningFactor (0.06f));
+        g.drawText (text.toUpperCase(), area, justification, true);
+    }
+
+    void drawLcd (juce::Graphics& g, juce::Rectangle<int> area)
+    {
+        drawWell (g, area.toFloat());
     }
 
     int drawLcdField (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& caption,

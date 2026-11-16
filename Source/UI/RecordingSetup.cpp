@@ -113,8 +113,8 @@ namespace ez
 
             const auto xOf = [&bar] (float db) { return bar.getX() + bar.getWidth() * juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f); };
             const auto fill = bar.withRight (xOf (level));
-            juce::ColourGradient gradient (juce::Colour (0xff2f9a5c), bar.getX(), 0, Theme::record, bar.getRight(), 0, false);
-            gradient.addColour ((double) ((loudDb + 60.0f) / 60.0f), juce::Colour (0xffd8c03a));
+            juce::ColourGradient gradient (Theme::meterLow, bar.getX(), 0, Theme::record, bar.getRight(), 0, false);
+            gradient.addColour ((double) ((loudDb + 60.0f) / 60.0f), Theme::meterMid);
             g.setGradientFill (gradient);
             g.fillRoundedRectangle (fill, 3.0f);
 

@@ -18,29 +18,38 @@ namespace ez
 
         juce::String oneDecimal (float v)   { return juce::String (v, 1); }
 
+        /** Cards draw themselves without a shadow (it would be clipped); their parent draws it. */
         void drawPanel (juce::Graphics& g, juce::Rectangle<int> r)
         {
-            g.setColour (Theme::panel);
-            g.fillRoundedRectangle (r.toFloat(), 6.0f);
-            g.setColour (Theme::border);
-            g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 6.0f, 1.0f);
+            drawCard (g, r.toFloat(), false);
         }
 
         void drawTitle (juce::Graphics& g, const juce::String& text, juce::Rectangle<int> r)
         {
             g.setColour (Theme::text);
-            g.setFont (Theme::font (Theme::titleFontSize, true));
+            g.setFont (Theme::font (Theme::titleFontSize, Theme::Weight::semibold));
             g.drawText (text, r, juce::Justification::centredLeft, false);
         }
 
         /** A horizontal reduction bar: how hard a part is working (dB below 0, right to left). */
         void drawReduction (juce::Graphics& g, juce::Rectangle<int> r, float db, float rangeDb = 12.0f)
         {
-            g.setColour (Theme::display);
-            g.fillRect (r);
+            const auto bar = r.toFloat();
+            drawWell (g, bar, 2.0f);
             const auto amount = juce::jlimit (0.0f, 1.0f, -db / rangeDb);
-            g.setColour (juce::Colour (0xffd9b23a));
-            g.fillRect (r.withLeft (r.getRight() - juce::roundToInt ((float) r.getWidth() * amount)));
+
+            if (amount > 0.0f)
+            {
+                const auto fill = bar.withLeft (bar.getRight() - bar.getWidth() * amount).reduced (0.0f, 1.0f);
+                g.setGradientFill (juce::ColourGradient::horizontal (Theme::meterMid.withAlpha (0.6f), fill.getX(), Theme::meterMid, fill.getRight()));
+                g.fillRoundedRectangle (fill, 1.5f);
+            }
+        }
+
+        /** The frequency axis of the EQ graph: 20 Hz to 20 kHz, log. */
+        float xForHz (juce::Rectangle<float> area, float hz)
+        {
+            return area.getX() + area.getWidth() * std::log (hz / 20.0f) / std::log (1000.0f);
         }
 
         float biquadDb (const dsp::Biquad& f, double sampleRate, float hz)
@@ -204,15 +213,26 @@ namespace ez
 
         void paint (juce::Graphics& g) override
         {
-            drawPanel (g, getLocalBounds());
+            const bool active = isOn() && owner.session.isMasterChainOn();
+            drawCard (g, getLocalBounds().toFloat(), false, false);
             auto title = getLocalBounds().reduced (10, 0).removeFromTop (34);
 
             if (module >= 0)
-                title.removeFromLeft (24);
+                title.removeFromLeft (26);
 
-            g.setColour (isOn() && owner.session.isMasterChainOn() ? Theme::text : Theme::textDim);
-            g.setFont (Theme::font (Theme::baseFontSize, true));
+            g.setColour (active ? Theme::text : Theme::textDim);
+            g.setFont (Theme::font (Theme::baseFontSize, Theme::Weight::semibold));
             g.drawText (name, title, juce::Justification::centredLeft, true);
+
+            // A light in the corner: this module is working on the sound
+            if (module >= 0)
+            {
+                g.setColour (active ? Theme::success : Theme::textFaint.withAlpha (0.6f));
+                g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ (float) getWidth() - 14.0f, 17.0f }));
+            }
+
+            g.setColour (Theme::hairline);
+            g.drawHorizontalLine (34, 10.0f, (float) getWidth() - 10.0f);
 
             if (drawExtra && ! extraArea.isEmpty())
                 drawExtra (g, extraArea);
@@ -357,12 +377,17 @@ namespace ez
 
         void paint (juce::Graphics& g) override
         {
-            // Arrows between the cards: the order the sound goes through
+            for (auto* c : cards)
+                Theme::drawShadow (g, c->getBounds().toFloat(), (float) Theme::cardRadius, 1);
+
+            // Connectors between the cards: the order the sound goes through
             for (int i = 0; i + 1 < cards.size(); ++i)
             {
-                const auto x = (float) cards[i]->getRight() + arrowWidth * 0.5f, y = (float) getHeight() * 0.5f;
+                const auto x1 = (float) cards[i]->getRight() + 2.0f, x2 = (float) cards[i + 1]->getX() - 2.0f, y = (float) getHeight() * 0.5f;
+                g.setColour (Theme::border);
+                g.drawLine (x1, y, x2 - 3.0f, y, 1.5f);
                 juce::Path arrow;
-                arrow.addTriangle (x - 4.0f, y - 5.0f, x - 4.0f, y + 5.0f, x + 4.0f, y);
+                arrow.addTriangle (x2 - 6.0f, y - 4.0f, x2 - 6.0f, y + 4.0f, x2, y);
                 g.setColour (Theme::textDim);
                 g.fillPath (arrow);
             }
@@ -409,8 +434,7 @@ namespace ez
 
         void drawEqCurve (juce::Graphics& g, juce::Rectangle<int> r)
         {
-            g.setColour (Theme::display);
-            g.fillRoundedRectangle (r.toFloat(), 4.0f);
+            drawWell (g, r.toFloat(), 4.0f);
 
             const double sr = 48000.0;
             dsp::Biquad low, lowMids, presence, air;
@@ -419,8 +443,37 @@ namespace ez
             presence.set (dsp::Biquad::Type::peak, sr, 3000.0f, 0.8f, owner.session.getMasterControl (Chain::presence));
             air.set (dsp::Biquad::Type::highShelf, sr, 12000.0f, 0.7f, owner.session.getMasterControl (Chain::air));
 
-            const auto area = r.toFloat().reduced (2.0f);
+            const auto area = r.toFloat().reduced (3.0f);
             const auto yFor = [&area] (float db) { return area.getCentreY() - db / 8.0f * area.getHeight() * 0.5f; };   // +-8 dB
+            const auto totalDb = [&] (float hz)
+            {
+                return biquadDb (low, sr, hz) + biquadDb (lowMids, sr, hz) + biquadDb (presence, sr, hz) + biquadDb (air, sr, hz);
+            };
+
+            // Grid: decades and the 6 dB lines, faint; 0 dB a step stronger
+            g.setFont (Theme::font (Theme::captionFontSize));
+
+            for (auto hz : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
+            {
+                const auto x = xForHz (area, hz);
+                const bool decade = hz == 100.0f || hz == 1000.0f || hz == 10000.0f;
+                g.setColour (Theme::hairline.withAlpha (decade ? 1.0f : 0.5f));
+                g.drawVerticalLine (juce::roundToInt (x), area.getY(), area.getBottom());
+
+                if (decade && area.getHeight() > 40.0f)
+                {
+                    g.setColour (Theme::textFaint);
+                    g.drawText (hz >= 1000.0f ? juce::String ((int) (hz / 1000.0f)) + "k" : juce::String ((int) hz),
+                                juce::Rectangle<float> (x + 3.0f, area.getBottom() - 12.0f, 30.0f, 11.0f), juce::Justification::centredLeft, false);
+                }
+            }
+
+            for (auto db : { -6.0f, 6.0f })
+            {
+                g.setColour (Theme::hairline.withAlpha (0.5f));
+                g.drawHorizontalLine (juce::roundToInt (yFor (db)), area.getX(), area.getRight());
+            }
+
             g.setColour (Theme::border);
             g.drawHorizontalLine (juce::roundToInt (area.getCentreY()), area.getX(), area.getRight());
 
@@ -429,16 +482,35 @@ namespace ez
             for (int x = 0; x <= (int) area.getWidth(); x += 2)
             {
                 const auto hz = 20.0f * std::pow (1000.0f, (float) x / area.getWidth());   // 20 Hz .. 20 kHz
-                const auto db = biquadDb (low, sr, hz) + biquadDb (lowMids, sr, hz) + biquadDb (presence, sr, hz) + biquadDb (air, sr, hz);
-                const juce::Point<float> p (area.getX() + (float) x, juce::jlimit (area.getY(), area.getBottom(), yFor (db)));
+                const juce::Point<float> p (area.getX() + (float) x, juce::jlimit (area.getY(), area.getBottom(), yFor (totalDb (hz))));
 
                 if (x == 0)   curve.startNewSubPath (p);
                 else          curve.lineTo (p);
             }
 
             const bool active = owner.session.isMasterChainOn() && eq->isOn();
-            g.setColour ((active ? juce::Colour (0xff7fbfff) : Theme::textDim).withAlpha (active ? 1.0f : 0.6f));
-            g.strokePath (curve, juce::PathStrokeType (1.8f));
+            const auto colour = active ? Theme::accent : Theme::textDim;
+
+            // The area between the curve and 0 dB, tinted: boosts and cuts read at a glance
+            juce::Path fill (curve);
+            fill.lineTo (area.getRight(), area.getCentreY());
+            fill.lineTo (area.getX(), area.getCentreY());
+            fill.closeSubPath();
+            g.setColour (colour.withAlpha (active ? 0.18f : 0.08f));
+            g.fillPath (fill);
+
+            g.setColour (colour.withAlpha (active ? 1.0f : 0.6f));
+            g.strokePath (curve, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+            // A dot on each band, where its knob acts
+            for (auto hz : { 100.0f, 300.0f, 3000.0f, 12000.0f })
+            {
+                const juce::Point<float> p (xForHz (area, hz), juce::jlimit (area.getY(), area.getBottom(), yFor (totalDb (hz))));
+                g.setColour (Theme::display);
+                g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre (p));
+                g.setColour (colour);
+                g.drawEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (p), 1.5f);
+            }
         }
 
         void drawBands (juce::Graphics& g, juce::Rectangle<int> r)
@@ -452,11 +524,16 @@ namespace ez
                 auto column = juce::Rectangle<int> (r.getX() + b * (w + 6), r.getY(), w, r.getHeight());
                 const auto db = chain != nullptr && owner.session.isMasterChainOn() && glue->isOn() ? chain->getBandReductionDb (b) : 0.0f;
                 auto label = column.removeFromBottom (14);
-                g.setColour (Theme::display);
-                g.fillRoundedRectangle (column.toFloat(), 3.0f);
+                drawWell (g, column.toFloat(), 4.0f);
                 const auto amount = juce::jlimit (0.0f, 1.0f, -db / 12.0f);
-                g.setColour (juce::Colour (0xff3b78b8));
-                g.fillRect (column.withTop (column.getY()).withHeight (juce::roundToInt ((float) column.getHeight() * amount)));
+
+                if (amount > 0.0f)
+                {
+                    // Gain reduction hangs from the top, as on a hardware compressor
+                    const auto fill = column.toFloat().reduced (2.0f).withHeight (juce::jmax (2.0f, ((float) column.getHeight() - 4.0f) * amount));
+                    g.setGradientFill (juce::ColourGradient::vertical (Theme::meterMid, fill.getY(), Theme::meterMid.withAlpha (0.55f), fill.getBottom()));
+                    g.fillRoundedRectangle (fill, 2.0f);
+                }
                 g.setColour (Theme::textDim);
                 g.setFont (Theme::font (Theme::captionFontSize + 0.5f));
                 g.drawText (juce::String (names[b]) + " " + oneDecimal (db), label, juce::Justification::centred, false);
@@ -479,7 +556,7 @@ namespace ez
                 b->setClickingTogglesState (true);
                 b->setRadioGroupId (88);
                 b->setWantsKeyboardFocus (false);
-                b->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff1d3550));
+                b->setColour (juce::TextButton::buttonOnColourId, Theme::activeFill);
                 b->setTooltip (t.name + ": " + oneDecimal (t.lufs) + " LUFS, true peak under " + oneDecimal (t.ceilingDb)
                                + " dB (the export's loudness target too)");
                 b->onClick = [this, b, i] { if (b->getToggleState()) owner.session.setMasterTarget (i); };
@@ -603,20 +680,25 @@ namespace ez
         static void drawReadout (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& label, const juce::String& value,
                                  const juce::String& unit, bool ok)
         {
-            g.setColour (Theme::display);
-            g.fillRoundedRectangle (r.toFloat(), 5.0f);
-            g.setColour (Theme::laneSeparator);
-            g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 5.0f, 1.0f);
-            r = r.reduced (10, 6);
-            g.setColour (Theme::displayLabel);
-            g.setFont (Theme::font (Theme::captionFontSize, true));
-            g.drawText (label, r.removeFromTop (14), juce::Justification::centredLeft, false);
-            g.setColour (ok ? Theme::displayText : juce::Colour (0xffffb35c));
-            g.setFont (Theme::font (22.0f, true));
-            const auto valueWidth = juce::roundToInt (juce::GlyphArrangement::getStringWidth (Theme::font (22.0f, true), value)) + 2;
+            drawWell (g, r.toFloat(), (float) Theme::cornerRadius);
+
+            // A thin bar along the bottom in the reading's state: green on target, amber when not
+            if (value != "-")
+            {
+                g.setColour ((ok ? Theme::success : Theme::warning).withAlpha (0.8f));
+                g.fillRoundedRectangle (r.toFloat().reduced (8.0f, 0.0f).removeFromBottom (2.0f), 1.0f);
+            }
+
+            r = r.reduced (12, 7);
+            drawCaption (g, label, r.removeFromTop (13));
+            const auto valueFont = Theme::font (Theme::readoutFontSize, Theme::Weight::semibold);
+            g.setColour (value == "-" ? Theme::textFaint : ok ? Theme::displayText : Theme::warning);
+            g.setFont (valueFont);
+            const auto valueWidth = juce::roundToInt (juce::GlyphArrangement::getStringWidth (valueFont, value)) + 2;
             g.drawText (value, r.removeFromLeft (juce::jmin (valueWidth, r.getWidth())), juce::Justification::centredLeft, false);
-            g.setFont (Theme::font (Theme::smallFontSize));
-            g.drawText (" " + unit, r, juce::Justification::centredLeft, false);
+            g.setColour (Theme::textDim);
+            g.setFont (Theme::font (Theme::smallFontSize, Theme::Weight::medium));
+            g.drawText (" " + unit, r.withTrimmedTop (6), juce::Justification::centredLeft, false);
         }
 
         juce::String statusText (const te::LoudnessMeter::Readings& l, const Session::LoudnessTarget& target) const
@@ -642,12 +724,24 @@ namespace ez
             if (r.getHeight() < 30)
                 return;
 
-            g.setColour (Theme::display);
-            g.fillRoundedRectangle (r.toFloat(), 5.0f);
+            drawWell (g, r.toFloat(), (float) Theme::cornerRadius);
 
             auto* edit = owner.session.getEdit();
             const auto length = juce::jmax (1.0, owner.session.getSongLength().inSeconds());
-            const auto area = r.toFloat().reduced (4.0f, 16.0f);
+            const auto area = r.toFloat().reduced (4.0f, 16.0f).withTrimmedLeft (30.0f);
+            const auto yForAxis = [&] (float lufs) { return juce::jmap (juce::jlimit (-36.0f, -4.0f, lufs), -36.0f, -4.0f, area.getBottom(), area.getY()); };
+
+            // A LUFS scale on the left, with faint lines across
+            g.setFont (Theme::font (Theme::captionFontSize));
+
+            for (auto lufs : { -30.0f, -24.0f, -18.0f, -12.0f, -6.0f })
+            {
+                const auto y = yForAxis (lufs);
+                g.setColour (Theme::hairline.withAlpha (0.6f));
+                g.drawHorizontalLine (juce::roundToInt (y), area.getX(), area.getRight());
+                g.setColour (Theme::textFaint);
+                g.drawText (juce::String ((int) lufs), juce::Rectangle<float> ((float) r.getX() + 4.0f, y - 6.0f, 26.0f, 12.0f), juce::Justification::centredRight, false);
+            }
             const auto xFor = [&] (double seconds) { return area.getX() + (float) (seconds / length) * area.getWidth(); };
             const auto yFor = [&] (float lufs) { return juce::jmap (juce::jlimit (-36.0f, -4.0f, lufs), -36.0f, -4.0f, area.getBottom(), area.getY()); };
 
@@ -659,15 +753,17 @@ namespace ez
                 for (const auto& s : owner.session.getSections())
                 {
                     const auto x = xFor (edit->tempoSequence.toTime (te::BeatPosition::fromBeats (s.startBeat)).inSeconds());
-                    g.setColour (Theme::border);
-                    g.drawVerticalLine (juce::roundToInt (x), (float) r.getY(), (float) r.getBottom());
-                    g.setColour (juce::Colour (0xffc8cdd5));
+                    g.setColour (Theme::border.withAlpha (0.8f));
+                    g.drawVerticalLine (juce::roundToInt (x), (float) r.getY() + 2.0f, (float) r.getBottom() - 2.0f);
+                    g.setColour (Theme::textDim);
                     g.drawText (s.name, juce::Rectangle<float> (x + 4.0f, (float) r.getY() + 2.0f, 120.0f, 12.0f), juce::Justification::centredLeft, true);
                 }
             }
 
-            // The target
+            // The target, with a +-1 LU band: inside it is "on target"
             const auto ty = yFor (targetLufs);
+            g.setColour (Theme::success.withAlpha (0.07f));
+            g.fillRect (juce::Rectangle<float>::leftTopRightBottom (area.getX(), yFor (targetLufs + 1.0f), area.getRight(), yFor (targetLufs - 1.0f)));
             g.setColour (Theme::accent);
             const float dashes[] = { 4.0f, 4.0f };
             g.drawDashedLine ({ area.getX(), ty, area.getRight(), ty }, dashes, 2, 1.0f);
@@ -693,8 +789,36 @@ namespace ez
                 else                                                      line.lineTo (p);
             }
 
-            g.setColour (Theme::displayText);
-            g.strokePath (line, juce::PathStrokeType (2.0f));
+            // The loudness line over a soft fill down to the floor
+            {
+                juce::Path under;
+
+                for (size_t i = 0; i < history.size(); ++i)
+                {
+                    const juce::Point<float> p (xFor (history[i].x), yFor (history[i].y));
+
+                    if (i == 0 || history[i].x - history[i - 1].x > 0.5f)
+                    {
+                        if (i > 0)
+                        {
+                            under.lineTo (xFor (history[i - 1].x), area.getBottom());
+                            under.closeSubPath();
+                        }
+
+                        under.startNewSubPath (p.x, area.getBottom());
+                    }
+
+                    under.lineTo (p);
+                }
+
+                under.lineTo (xFor (history.back().x), area.getBottom());
+                under.closeSubPath();
+                g.setGradientFill (juce::ColourGradient::vertical (Theme::accent.withAlpha (0.28f), area.getY(), Theme::accent.withAlpha (0.02f), area.getBottom()));
+                g.fillPath (under);
+            }
+
+            g.setColour (Theme::accent.brighter (0.2f));
+            g.strokePath (line, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
     };
 
@@ -752,9 +876,10 @@ namespace ez
             drawPanel (g, getLocalBounds());
             drawTitle (g, "Reference A/B", getLocalBounds().reduced (12, 0).removeFromTop (40));
 
-            g.setColour (Theme::display);
-            g.fillRoundedRectangle (fileArea.toFloat(), 4.0f);
-            auto text = fileArea.reduced (8, 0);
+            drawWell (g, fileArea.toFloat(), (float) Theme::cornerRadius);
+            auto text = fileArea.reduced (10, 0);
+            Icons::draw (g, Icon::file, text.removeFromLeft (14).toFloat().withSizeKeepingCentre (14.0f, 14.0f), Theme::textDim, 1.5f);
+            text.removeFromLeft (8);
             const auto file = owner.session.getReferenceFile();
             g.setFont (Theme::font (Theme::smallFontSize));
             g.setColour (Theme::textDim);
@@ -988,6 +1113,10 @@ namespace ez
     {
         g.fillAll (Theme::background);
 
+        for (auto* panel : { (juce::Component*) loudness.get(), (juce::Component*) reference.get() })
+            if (panel != nullptr && panel->isVisible())
+                Theme::drawShadow (g, panel->getBounds().toFloat(), (float) Theme::cardRadius, 1);
+
         g.setColour (Theme::bar);
         g.fillRect (headerArea);
         g.setColour (Theme::laneSeparator);
@@ -1004,11 +1133,10 @@ namespace ez
         // The assistant: what it heard, and the one fix it suggests
         if (! assistantArea.isEmpty())
         {
+            Theme::drawShadow (g, assistantArea.toFloat(), (float) Theme::cardRadius, 1);
             drawPanel (g, assistantArea);
             auto r = assistantArea.reduced (12);
-            g.setColour (Theme::textDim);
-            g.setFont (Theme::font (Theme::captionFontSize, true));
-            g.drawText ("MASTER ASSISTANT", r.removeFromTop (16), juce::Justification::centredLeft, false);
+            drawCaption (g, "Master assistant", r.removeFromTop (16));
             g.setColour (advice.fix == Session::MasterAdvice::Fix::none && advice.title == "On target" ? Theme::displayText : Theme::text);
             g.setFont (Theme::font (Theme::titleFontSize, true));
             g.drawText (advice.title, r.removeFromTop (22), juce::Justification::centredLeft, true);
@@ -1022,6 +1150,7 @@ namespace ez
         }
 
         // Main output row
+        Theme::drawShadow (g, outputArea.toFloat(), (float) Theme::cardRadius, 1);
         drawPanel (g, outputArea);
         auto out = outputArea.reduced (12, 0);
         Icons::draw (g, Icon::headphones, out.removeFromLeft (18).toFloat().withSizeKeepingCentre (16, 16), Theme::text);

@@ -41,23 +41,40 @@ namespace ez
         // Bar and beat ticks
         const auto& tempo = edit->tempoSequence;
         const auto gridBeats = view.getGridBeats (session.getBpm());
-        g.setFont (juce::Font (juce::FontOptions (Theme::statusFontSize)));
+        g.setFont (Theme::font (Theme::smallFontSize, Theme::Weight::semibold));
 
-        // Bar lines follow the time signatures (a zoomed-out grid steps by whole bars)
+        // Bar lines follow the time signatures (a zoomed-out grid steps by whole bars).
+        // Numbers only where there's room for them: zoomed out, every 2nd, 4th... bar is numbered.
+        int lastLabelRight = -1000;
+
         for (auto [beat, isBar] : session.getGridLines (tempo.toBeats (view.xToTime (0)).inBeats(), tempo.toBeats (view.xToTime (getWidth())).inBeats(), gridBeats))
         {
             const auto x = view.timeToX (tempo.toTime (te::BeatPosition::fromBeats (beat)));
-            g.setColour (isBar ? Theme::text : Theme::textDim);
-            g.drawVerticalLine (x, isBar ? 0.0f : (float) getHeight() * 0.6f, (float) getHeight());
+            g.setColour (isBar ? Theme::textDim : Theme::textFaint.withAlpha (0.7f));
+            g.drawVerticalLine (x, isBar ? (float) getHeight() * 0.35f : (float) getHeight() * 0.7f, (float) getHeight());
 
-            if (isBar)
-                g.drawText (juce::String (session.getBarAt (beat + 1.0e-7).first + 1), x + 3, 0, 40, getHeight() / 2, juce::Justification::centredLeft);
+            if (isBar && x > lastLabelRight + 4)
+            {
+                const auto label = juce::String (session.getBarAt (beat + 1.0e-7).first + 1);
+                g.setColour (Theme::text);
+                g.drawText (label, x + 4, 0, 40, getHeight() / 2 + 2, juce::Justification::centredLeft);
+                lastLabelRight = x + 4 + juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), label);
+            }
         }
 
-        // Playhead marker
-        const auto px = view.timeToX (session.getPosition());
+        g.setColour (Theme::hairline);
+        g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
+
+        // Playhead marker: a small rounded flag pointing down at the line
+        const auto px = (float) view.timeToX (session.getPosition());
         juce::Path marker;
-        marker.addTriangle ((float) px - 6.0f, 0.0f, (float) px + 6.0f, 0.0f, (float) px, 10.0f);
+        marker.startNewSubPath (px - 5.5f, 0.0f);
+        marker.lineTo (px + 5.5f, 0.0f);
+        marker.lineTo (px + 5.5f, 6.0f);
+        marker.lineTo (px, 11.0f);
+        marker.lineTo (px - 5.5f, 6.0f);
+        marker.closeSubPath();
+        marker = marker.createPathWithRoundedCorners (1.5f);
         g.setColour (Theme::playhead);
         g.fillPath (marker);
     }

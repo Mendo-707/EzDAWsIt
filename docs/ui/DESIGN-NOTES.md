@@ -178,3 +178,38 @@ Each step only fills a region that already exists, so the shell doesn't move aga
 - Ducking (sidechain): track menu > Duck under (sidechain) > a track. A compressor marked as the duck, keyed by that track.
 - Tempo: K taps it in; right-click the BPM display for double / half time. Z zooms to fit the song; Ctrl+L loops the
   selected clips.
+
+## Design system (v1.1 visual refresh)
+
+All values live in `Source/UI/Theme.h`; components never hard-code colours or sizes.
+
+**Surfaces** (each step is one layer nearer the user; never pure black):
+`statusBar #0F1115` → `background #12141A` → `bar #161920` → `panel #1A1D24` → `raised #22262F` → `hover #2A2F3A`.
+Recessed wells (readouts, graphs, text fields): `display #0D0F13`.
+
+**Lines:** `hairline #2A2E38` between regions, `border #343A46` around controls, `laneSeparator #0C0E12` between lanes.
+
+**Text:** `text #ECEEF2`, `textDim #9BA3B1` (secondary, 6.6:1), `textFaint #6B7383` (units, hints; large or non-essential only).
+
+**Accent:** electric blue `#4D9FFF`, only for what is on, selected, focused or the next action. State colours:
+mute `#F5B544`, solo `#4D9FFF`, record `#E5484D`, play `#30A46C`, success `#3DD68C`, warning `#F2B84C`.
+Meters: green, amber from -6 dB, red at 0 dB.
+
+**Radii:** 4 (chips, clips, small toggles), 6 (buttons, fields, menus), 8 (cards, strips), 10 (popups, dialogs).
+
+**Spacing:** a 4 px grid: 4 / 8 / 12 / 16 / 24.
+
+**Type:** Segoe UI Variable Text (Windows 11) or Segoe UI. Captions 10 px semibold UPPERCASE with tracking;
+small 11; body 12.5; titles 13.5 semibold; readouts 19-24 semibold. Weights: regular for values, medium for
+controls, semibold for names and headers.
+
+**Depth:** cards = `drawCard()` (gradient, hairline, 1 px top highlight; the parent draws `Theme::drawShadow`
+because a component's own shadow is clipped). Wells = `drawWell()`. A soft shadow sits under the transport and
+over the timeline when the bottom panel is open.
+
+**Clips** wear their track's colour (`ClipView::colourFor`, also used by the piano roll). Audio: zero line and a
+filled, shaded wave. MIDI: faint pitch rows and rounded note bars. A glyph before the name says which.
+Selected = lit tint, inner glow and a 1.5 px selection edge.
+
+**Checking the look:** `EzDAWsIt.exe --screenshots <folder>` renders every view of a demo song at 1280x760 and
+900x500, plus a menu and a message box. Use it after any visual change.

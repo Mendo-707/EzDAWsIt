@@ -222,10 +222,12 @@ namespace ez
     void DetailPanel::paint (juce::Graphics& g)
     {
         g.fillAll (Theme::background);
-        g.setColour (Theme::bar);
+        // The header: the same surface as the transport, so the editors below read as part of the shell
+        g.setGradientFill (juce::ColourGradient::vertical (Theme::panel.brighter (0.03f), (float) headerArea.getY(), Theme::panel, (float) headerArea.getBottom()));
         g.fillRect (headerArea);
         g.setColour (Theme::laneSeparator);
         g.drawHorizontalLine (headerArea.getY(), 0.0f, (float) getWidth());
+        g.setColour (Theme::hairline);
         g.drawHorizontalLine (headerArea.getBottom() - 1, 0.0f, (float) getWidth());
 
         if (open)

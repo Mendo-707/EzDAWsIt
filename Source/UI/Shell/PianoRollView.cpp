@@ -3,6 +3,7 @@
 */
 
 #include "PianoRollView.h"
+#include "../Timeline/ClipView.h"
 
 namespace ez
 {
@@ -281,7 +282,7 @@ namespace ez
             g.drawVerticalLine (x2, 0.0f, (float) h);
 
             // Notes
-            const auto base = clip->getColour().withSaturation (juce::jmin (0.65f, clip->getColour().getSaturation())).withBrightness (0.8f);
+            const auto base = ClipView::colourFor (*clip).withBrightness (0.85f);   // the same colour as the clip in the timeline
             const auto visible = getLocalBounds().toFloat();
             const bool copying = dragging && mode == Mode::move && copyOnDrag;
 

@@ -153,6 +153,22 @@ namespace ez
         g.fillAll (Theme::background);
     }
 
+    void MainComponent::paintOverChildren (juce::Graphics& g)
+    {
+        // A soft shadow under the transport: the bars at the top sit above the work area
+        const auto y = (float) transportBar->getBottom();
+        g.setGradientFill (juce::ColourGradient::vertical (juce::Colours::black.withAlpha (0.28f), y, juce::Colours::transparentBlack, y + 6.0f));
+        g.fillRect (juce::Rectangle<float> (0.0f, y, (float) getWidth(), 6.0f));
+
+        // ... and the bottom panel rises over the timeline when it's open
+        if (detailPanel != nullptr && detailPanel->isVisible() && detailPanel->isOpen())
+        {
+            const auto top = detailPanel->getBounds().toFloat();
+            g.setGradientFill (juce::ColourGradient::vertical (juce::Colours::transparentBlack, top.getY() - 6.0f, juce::Colours::black.withAlpha (0.3f), top.getY()));
+            g.fillRect (top.withY (top.getY() - 6.0f).withHeight (6.0f));
+        }
+    }
+
     void MainComponent::resized()
     {
         auto r = getLocalBounds();

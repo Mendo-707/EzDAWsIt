@@ -146,6 +146,19 @@ namespace ez
     }
 
     //==============================================================================
+    /** A raised card (modules, panels, strips): soft shadow when elevated, a gradient from a touch
+        lighter at the top, a hairline edge and a 1 px highlight along the top. Highlighted = selected. */
+    void drawCard (juce::Graphics&, juce::Rectangle<float>, bool elevated = true, bool highlighted = false,
+                   float radius = (float) Theme::cardRadius);
+
+    /** A recessed well (readouts, graphs, empty slots): darker than its card, shaded at the top. */
+    void drawWell (juce::Graphics&, juce::Rectangle<float>, float radius = (float) Theme::cornerRadius);
+
+    /** A small UPPERCASE section label (INSERTS, SENDS, ...). */
+    void drawCaption (juce::Graphics&, const juce::String&, juce::Rectangle<int>,
+                      juce::Justification = juce::Justification::centredLeft);
+
+    //==============================================================================
     /** The dark readout box (position, tempo, ...). */
     void drawLcd (juce::Graphics&, juce::Rectangle<int>);
 

@@ -73,7 +73,7 @@ namespace ez
         const auto cpuWidth = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), "CPU 100%") + 4;
         // Amber when the computer is working hard, red when the sound may start to crackle
         const auto load = audioEngine.getDeviceManager().getCpuUsage();
-        g.setColour (load > 0.9 ? Theme::danger : load > 0.7 ? juce::Colour (0xfff2b84c) : Theme::text);
+        g.setColour (load > 0.9 ? Theme::danger : load > 0.7 ? Theme::warning : Theme::text);
         g.drawText (cpu, r.removeFromRight (cpuWidth), juce::Justification::centredRight, false);
         r.removeFromRight (16);
 

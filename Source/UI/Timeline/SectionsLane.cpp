@@ -111,7 +111,7 @@ namespace ez
             return;
         }
 
-        const auto font = Theme::font (Theme::captionFontSize + 0.5f, true);
+        const auto font = Theme::font (Theme::smallFontSize, Theme::Weight::semibold);
 
         for (auto& s : sections)
         {
@@ -129,16 +129,25 @@ namespace ez
                 continue;
 
             const bool isSelected = s.id == selected;
-            g.setColour (s.colour.withMultipliedBrightness (s.id == hovered ? 1.15f : 1.0f));
-            g.fillRoundedRectangle (block.toFloat(), 3.0f);
+            // A tint of the section's colour with a solid stripe at its start: marks the arrangement
+            // without shouting over the clips below
+            const auto blockF = block.toFloat().reduced (0.0f, 2.0f).withTrimmedRight (1.0f);
+            g.setColour (Theme::bar.interpolatedWith (s.colour, s.id == hovered || isSelected ? 0.55f : 0.42f));
+            g.fillRoundedRectangle (blockF, (float) Theme::smallRadius);
+            {
+                juce::Graphics::ScopedSaveState state (g);
+                g.reduceClipRegion (block.withWidth (3));
+                g.setColour (s.colour.brighter (0.2f));
+                g.fillRoundedRectangle (blockF, (float) Theme::smallRadius);
+            }
 
             if (isSelected)
             {
                 g.setColour (Theme::selection);
-                g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 3.0f, 1.5f);
+                g.drawRoundedRectangle (blockF.reduced (0.5f), (float) Theme::smallRadius, 1.5f);
             }
 
-            auto text = block.reduced (6, 0);
+            auto text = block.reduced (8, 0);
 
             // Repeat handle, on hover or when selected
             if ((s.id == hovered || isSelected) && ! repeatHandleFor (shown).isEmpty())

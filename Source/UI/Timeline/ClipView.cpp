@@ -4,6 +4,7 @@
 
 #include "ClipView.h"
 #include "../Theme.h"
+#include "../Widgets.h"
 
 namespace ez
 {
@@ -83,6 +84,18 @@ namespace ez
     }
 
     //==============================================================================
+    juce::Colour ClipView::colourFor (const te::Clip& c)
+    {
+        const bool hasOwnColour = c.state.hasProperty (Session::userColourProp);
+        const auto trackColour = c.getTrack() != nullptr ? c.getTrack()->getColour() : juce::Colour();
+        const auto base = hasOwnColour ? c.getColour()
+                        : ! trackColour.isTransparent() ? trackColour
+                        : dynamic_cast<const te::WaveAudioClip*> (&c) != nullptr ? Theme::clipAudio : Theme::clipMidi;
+
+        return base.withSaturation (juce::jlimit (0.35f, 0.75f, base.getSaturation()))
+                   .withBrightness (juce::jlimit (0.62f, 0.82f, base.getBrightness()));
+    }
+
     void ClipView::paint (juce::Graphics& g)
     {
         if (! isStillInSong())
@@ -92,19 +105,21 @@ namespace ez
         const bool isMuted = clip->isMuted();
         auto r = getLocalBounds();
 
-        // The design's clip: a header strip in the clip's colour with the name, a tinted body, a 1 px
-        // border in the colour. Audio is blue and MIDI green unless the user picked a colour
-        // (Tracktion's own default is red for audio, so it's only used once someone sets one)
+        // A clip wears its own colour if the user picked one, else its track's (so a track's parts
+        // read as one line, as in Ableton and Logic), else blue for audio and green for MIDI.
+        // (Tracktion's own clip default is red for audio, so it's only used once someone sets one.)
         const bool isAudio = dynamic_cast<te::WaveAudioClip*> (clip.get()) != nullptr;
-        const bool hasOwnColour = clip->state.hasProperty (Session::userColourProp);
-        const auto base = hasOwnColour ? clip->getColour() : juce::Colour (isAudio ? 0xff3b78b8 : 0xff3fa36b);
-        const auto colour = isMuted ? juce::Colour (0xff4a4f5a)
-                                    : hasOwnColour ? base.withSaturation (juce::jmin (0.7f, base.getSaturation())).withBrightness (0.72f) : base;
-        const auto body = Theme::laneBackground.interpolatedWith (colour, 0.3f);
+        const auto colour = isMuted ? juce::Colour (0xff474c57) : colourFor (*clip);
         const auto rf = r.toFloat();
+        constexpr auto radius = (float) Theme::smallRadius;
 
-        g.setColour (body);
-        g.fillRoundedRectangle (rf, 3.0f);
+        // Body: a dark tint of the colour, a touch lighter at the top
+        {
+            const auto bodyTop = Theme::laneBackground.interpolatedWith (colour, isMuted ? 0.15f : 0.30f);
+            const auto bodyBottom = Theme::laneBackground.interpolatedWith (colour, isMuted ? 0.10f : 0.20f);
+            g.setGradientFill (juce::ColourGradient::vertical (bodyTop, rf.getY(), bodyBottom, rf.getBottom()));
+            g.fillRoundedRectangle (rf, radius);
+        }
 
         const auto headerHeight = r.getHeight() >= 40 ? 16 : 13;
         auto titleBar = r.removeFromTop (headerHeight);
@@ -112,17 +127,18 @@ namespace ez
         {
             juce::Graphics::ScopedSaveState clipped (g);
             g.reduceClipRegion (titleBar);
-            g.setColour (colour);
-            g.fillRoundedRectangle (rf, 3.0f);
+            g.setColour (colour.withAlpha (isMuted ? 0.7f : 0.92f));
+            g.fillRoundedRectangle (rf, radius);
         }
 
         // Dark text on light colours, white on dark ones (contrast first)
-        const auto ink = colour.getPerceivedBrightness() > 0.62f ? juce::Colour (0xff0e1114) : juce::Colours::white;
+        const auto ink = colour.getPerceivedBrightness() > 0.62f ? Theme::ink : juce::Colours::white;
         g.setColour (ink.withAlpha (isMuted ? 0.6f : 1.0f));
-        g.setFont (Theme::font (Theme::smallFontSize, true));
+        g.setFont (Theme::font (Theme::smallFontSize, Theme::Weight::semibold));
         auto titleText = titleBar.reduced (5, 0);
+        const bool roomForText = titleText.getWidth() >= 14;   // zoomed far out: the colour alone
 
-        if (const auto takes = session.getNumTakes (*clip); takes > 1 && titleText.getWidth() > 90)
+        if (const auto takes = session.getNumTakes (*clip); takes > 1 && roomForText && titleText.getWidth() > 90)
         {
             // Which take plays (T for the next one)
             const auto badge = "Take " + juce::String (session.getCurrentTake (*clip) + 1) + "/" + juce::String (takes);
@@ -130,10 +146,42 @@ namespace ez
             g.drawText (badge, titleText.removeFromRight (badgeWidth), juce::Justification::centredRight, true);
         }
 
-        g.drawText ((isMuted ? "[muted] " : "") + clip->getName(), titleText, juce::Justification::centredLeft, true);
+        // A small glyph before the name: a wave for audio, notes for MIDI
+        if (roomForText && titleText.getWidth() > 40)
+        {
+            Icons::draw (g, isAudio ? Icon::speaker : Icon::note, titleText.removeFromLeft (11).toFloat().withSizeKeepingCentre (10.0f, 10.0f),
+                         ink.withAlpha (isMuted ? 0.5f : 0.85f), 1.6f);
+            titleText.removeFromLeft (4);
+        }
 
-        // Waveform and notes in a light tint of the colour
-        g.setColour (colour.interpolatedWith (juce::Colours::white, 0.55f).withAlpha (isMuted ? 0.4f : 0.9f));
+        if (roomForText)
+            g.drawText ((isMuted ? "[muted] " : "") + clip->getName(), titleText, juce::Justification::centredLeft, true);
+
+        // Audio and MIDI look different at a glance: audio has a zero line and a filled wave,
+        // MIDI faint rows like a piano roll and solid note bars
+        if (isAudio && r.getHeight() > 12)
+        {
+            g.setColour (colour.withAlpha (0.25f));   // the zero line, so quiet passages still read as audio
+            g.fillRect (r.reduced (1, 0).withSizeKeepingCentre (r.getWidth() - 2, 1));
+        }
+        else if (! isAudio && r.getHeight() > 24)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.12f));
+
+            for (int y = r.getY() + 6; y < r.getBottom() - 2; y += 6)
+                g.fillRect (r.getX() + 1, y, r.getWidth() - 2, 1);
+        }
+
+        const auto ink2 = colour.interpolatedWith (juce::Colours::white, isAudio ? 0.45f : 0.6f).withAlpha (isMuted ? 0.4f : 0.95f);
+
+        g.setColour (ink2);
+
+        if (isAudio)   // lighter at the peaks, deeper at the centre: the wave has body
+        {
+            juce::ColourGradient wave (ink2.brighter (0.15f), 0.0f, (float) r.getY(), ink2.brighter (0.15f), 0.0f, (float) r.getBottom(), false);
+            wave.addColour (0.5, colour.interpolatedWith (juce::Colours::white, 0.2f).withAlpha (isMuted ? 0.4f : 0.95f));
+            g.setGradientFill (wave);
+        }
 
         if (auto* wave = dynamic_cast<te::WaveAudioClip*> (clip.get()))
             drawWaveform (g, *wave, r.reduced (1));
@@ -188,15 +236,28 @@ namespace ez
 
             if (! tags.isEmpty() && getHeight() >= 34 && getWidth() > 60)
             {
-                g.setColour (juce::Colours::white.withAlpha (0.75f));
+                g.setColour (Theme::clipText.withAlpha (0.8f));
                 g.setFont (Theme::font (Theme::captionFontSize, true));
                 g.drawText (tags.joinIntoString (juce::String (juce::CharPointer_UTF8 (" \xc2\xb7 "))),
                             getLocalBounds().reduced (5, 3).removeFromBottom (12), juce::Justification::bottomLeft, true);
             }
         }
 
-        g.setColour (isSelected ? Theme::selection : colour);
-        g.drawRoundedRectangle (rf.reduced (isSelected ? 1.0f : 0.5f), 3.0f, isSelected ? 2.0f : 1.0f);
+        if (isSelected)
+        {
+            // Selected: lit up. A white edge, a soft inner glow, and a brighter tint over the body
+            g.setColour (juce::Colours::white.withAlpha (0.07f));
+            g.fillRoundedRectangle (rf.withTrimmedTop ((float) headerHeight), radius);
+            g.setColour (Theme::selection.withAlpha (0.35f));
+            g.drawRoundedRectangle (rf.reduced (2.5f), radius, 2.0f);
+            g.setColour (Theme::selection);
+            g.drawRoundedRectangle (rf.reduced (1.0f), radius, 1.5f);
+        }
+        else
+        {
+            g.setColour (colour.withAlpha (hovering ? 0.95f : 0.6f));
+            g.drawRoundedRectangle (rf.reduced (0.5f), radius, 1.0f);
+        }
     }
 
     float ClipView::fadeInX() const
@@ -265,8 +326,12 @@ namespace ez
             const auto x1 = (float) (view.timeToX (start) - clipStartX);
             const auto x2 = (float) (view.timeToX (end) - clipStartX);
             const auto y  = (float) area.getBottom() - (float) (n->getNoteNumber() - lowest + 1) * noteHeight;
+            const auto note = juce::Rectangle<float> (x1, y, juce::jmax (1.5f, x2 - x1 - 1.0f), juce::jmax (1.5f, noteHeight - 1.0f));
 
-            g.fillRect (x1, y, juce::jmax (1.0f, x2 - x1), juce::jmax (1.0f, noteHeight - 1.0f));
+            if (note.getWidth() >= 4.0f && note.getHeight() >= 3.0f)
+                g.fillRoundedRectangle (note, juce::jmin (1.5f, note.getHeight() * 0.4f));
+            else
+                g.fillRect (note);
         }
     }
 

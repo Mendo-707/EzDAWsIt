@@ -123,9 +123,15 @@ namespace ez
 
             const auto numTracks = session.getNumAudioTracks();
 
+            // Every other lane a shade lighter, so a long row is easy to follow across the screen
+            g.setColour (Theme::laneAlternate);
+
+            for (int t = 1; t < numTracks; t += 2)
+                g.fillRect (0, view.topOfTrack (t), getWidth(), view.rowHeight (t));
+
             if (view.focusedTrack >= 0 && view.focusedTrack < numTracks)
             {
-                g.setColour (Theme::selection.withAlpha (0.05f));
+                g.setColour (juce::Colours::white.withAlpha (0.025f));
                 g.fillRect (0, view.topOfTrack (view.focusedTrack), getWidth(), view.rowHeight (view.focusedTrack));
             }
 
@@ -135,8 +141,32 @@ namespace ez
             const auto gridBottom = (float) juce::jmax (getHeight(), 0);
             const auto clip = g.getClipBounds();
 
-            for (auto [beat, isBar] : session.getGridLines (tempo.toBeats (view.xToTime (clip.getX())).inBeats(),
-                                                             tempo.toBeats (view.xToTime (clip.getRight())).inBeats(), gridBeats))
+            const auto lines = session.getGridLines (tempo.toBeats (view.xToTime (clip.getX())).inBeats(),
+                                                     tempo.toBeats (view.xToTime (clip.getRight())).inBeats(), gridBeats);
+
+            // Every other bar a whisper lighter, so bars read as blocks when zoomed in
+            {
+                int previousBarX = -1, barNumber = 0;
+
+                for (auto [beat, isBar] : lines)
+                {
+                    if (! isBar)
+                        continue;
+
+                    const auto x = view.timeToX (tempo.toTime (te::BeatPosition::fromBeats (beat)));
+                    barNumber = session.getBarAt (beat + 1.0e-7).first;
+
+                    if (previousBarX >= 0 && x - previousBarX >= 24 && (barNumber % 2) == 0)
+                    {
+                        g.setColour (juce::Colours::white.withAlpha (0.012f));
+                        g.fillRect (previousBarX, 0, x - previousBarX, getHeight());
+                    }
+
+                    previousBarX = x;
+                }
+            }
+
+            for (auto [beat, isBar] : lines)
             {
                 g.setColour (isBar ? Theme::gridBar : Theme::gridBeat);
                 g.drawVerticalLine (view.timeToX (tempo.toTime (te::BeatPosition::fromBeats (beat))), 0.0f, gridBottom);
@@ -147,6 +177,42 @@ namespace ez
 
             for (int t = 1; t <= numTracks; ++t)
                 g.drawHorizontalLine (view.topOfTrack (t) - 1, 0.0f, (float) getWidth());
+
+            // An empty song: say how to start, in the middle of what's on screen
+            if (! dropPoint.has_value() && ! session.isRecording())
+            {
+                bool anyClips = false;
+
+                for (auto* track : te::getAudioTracks (*edit))
+                    anyClips = anyClips || ! track->getClips().isEmpty();
+
+                if (! anyClips)
+                {
+                    auto visible = getLocalBounds();
+
+                    if (auto* viewport = findParentComponentOfClass<juce::Viewport>())
+                        visible = viewport->getViewArea();
+
+                    const auto box = visible.withSizeKeepingCentre (juce::jmin (420, visible.getWidth() - 40), 74);
+
+                    if (box.getWidth() > 160)
+                    {
+                        g.setColour (Theme::panel.withAlpha (0.85f));
+                        g.fillRoundedRectangle (box.toFloat(), (float) Theme::cardRadius);
+                        g.setColour (Theme::hairline);
+                        g.drawRoundedRectangle (box.toFloat().reduced (0.5f), (float) Theme::cardRadius, 1.0f);
+                        auto inner = box.reduced (16, 12);
+                        g.setColour (Theme::text);
+                        g.setFont (Theme::font (Theme::titleFontSize, Theme::Weight::semibold));
+                        g.drawText (numTracks == 0 ? "No tracks yet" : "Nothing recorded yet", inner.removeFromTop (22), juce::Justification::centred, false);
+                        g.setColour (Theme::textDim);
+                        g.setFont (Theme::font (Theme::smallFontSize + 0.5f));
+                        g.drawFittedText (numTracks == 0 ? "Press Ctrl+T for a track, or drop audio files here"
+                                                         : "Drop samples or audio files here, or arm a track (Shift+R) and press R to record",
+                                          inner, juce::Justification::centred, 2);
+                    }
+                }
+            }
 
             // Below the last track: a hint where dropped files go
             if (dropPoint.has_value())
@@ -753,6 +819,9 @@ namespace ez
         {
             if (lastX >= 0)
             {
+                // A 1 px line with a soft glow either side: thin, but easy to find
+                g.setColour (Theme::playhead.withAlpha (0.12f));
+                g.fillRect (lastX - 1, 0, 3, getHeight());
                 g.setColour (Theme::playhead);
                 g.drawVerticalLine (lastX, 0.0f, (float) getHeight());
             }

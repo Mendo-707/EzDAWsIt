@@ -102,6 +102,7 @@ set(EZ_SOURCES
     Source/UI/Timeline/TimelineView.h Source/UI/Timeline/TimelineView.cpp
     # Tests (run with: EzDAWsIt.exe --run-tests results.txt)
     Source/Tests/TestRunner.h       Source/Tests/TestRunner.cpp
+    Source/Tests/Screenshots.h      Source/Tests/Screenshots.cpp
     Source/Tests/CoreTests.cpp)
 
 target_sources(EzDAWsIt PRIVATE ${EZ_SOURCES})

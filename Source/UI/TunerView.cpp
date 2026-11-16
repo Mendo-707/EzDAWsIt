@@ -198,7 +198,7 @@ namespace ez
 
         const bool showing = juce::Time::getMillisecondCounter() - lastNoteTime < 600 && lastNoteTime != 0;
         const bool good = showing && std::abs (shownCents) <= inTune;
-        const auto colour = ! showing ? Theme::textDim : good ? Theme::displayText : juce::Colour (0xfff2b84c);
+        const auto colour = ! showing ? Theme::textDim : good ? Theme::displayText : Theme::warning;
 
         // The needle's arc: -50 to +50 cents across 120 degrees
         const auto centre = juce::Point<float> (area.getCentreX(), area.getBottom() - 26.0f);

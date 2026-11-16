@@ -127,7 +127,7 @@ namespace ez
     void AppBar::paint (juce::Graphics& g)
     {
         g.fillAll (Theme::bar);
-        g.setColour (Theme::laneSeparator);
+        g.setColour (Theme::hairline);
         g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
 
         // Logo: a rounded square with a small waveform, then the name
@@ -169,7 +169,7 @@ namespace ez
                 auto stateArea = nameArea.withTrimmedLeft (nameWidth).withWidth (60);
                 nameArea = nameArea.withWidth (nameWidth);
                 g.setFont (Theme::font (Theme::captionFontSize, true));
-                g.setColour (lastUnsaved ? juce::Colour (0xfff2b84c) : Theme::textDim);
+                g.setColour (lastUnsaved ? Theme::warning : Theme::textDim);
                 g.drawText (lastUnsaved ? "EDITED" : "SAVED", stateArea, juce::Justification::centredLeft, false);
             }
 

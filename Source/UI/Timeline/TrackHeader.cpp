@@ -32,8 +32,8 @@ namespace ez
         armButton.setTooltip ("Arm for recording (Shift+R). Pick the input in Routing");
         fxButton.setTooltip ("Instrument and effects on this track (right-click the track for more)");
 
-        muteButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffd9a441));
-        soloButton.setColour (juce::TextButton::buttonOnColourId, Theme::accent);
+        muteButton.setColour (juce::TextButton::buttonOnColourId, Theme::mute);
+        soloButton.setColour (juce::TextButton::buttonOnColourId, Theme::solo);
         armButton.setColour (juce::TextButton::buttonOnColourId, Theme::record);
         // The design's on colours: amber mute and blue solo with dark text, red arm with white
         muteButton.setColour (juce::TextButton::textColourOnId, Theme::ink);
@@ -216,13 +216,28 @@ namespace ez
 
     void TrackHeader::paint (juce::Graphics& g)
     {
-        g.fillAll (view.focusedTrack == trackIndex ? juce::Colour (0xff2c313b) : Theme::panel);
+        const bool focused = view.focusedTrack == trackIndex;
+        g.fillAll (focused ? Theme::raised : Theme::panel);
+
+        // A wash of the track's colour from the left edge: the header and its lane read as one track
+        if (! lastColour.isTransparent())
+        {
+            g.setGradientFill (juce::ColourGradient::horizontal (lastColour.withAlpha (focused ? 0.16f : 0.09f), 0.0f,
+                                                                 lastColour.withAlpha (0.0f), (float) getWidth() * 0.6f));
+            g.fillRect (getLocalBounds());
+        }
 
         // The colour bar: the track's colour, or a quiet grey when it has none
         g.setColour (lastColour.isTransparent() ? Theme::border : lastColour);
-        g.fillRect (0, 0, 4, getHeight());
+        g.fillRoundedRectangle (juce::Rectangle<float> (1.0f, 3.0f, 3.0f, (float) getHeight() - 7.0f), 1.5f);
 
-        Icons::draw (g, typeIcon, iconArea.toFloat(), Theme::textDim, 1.6f);
+        if (focused)
+        {
+            g.setColour (Theme::accent.withAlpha (0.5f));
+            g.drawRect (getLocalBounds().withTrimmedBottom (1), 1);
+        }
+
+        Icons::draw (g, typeIcon, iconArea.toFloat(), lastColour.isTransparent() ? Theme::textDim : lastColour.brighter (0.3f), 1.6f);
 
         if (! deviceArea.isEmpty() && deviceText.isNotEmpty())
         {

@@ -38,7 +38,7 @@ namespace ez
             knob.setVelocityModeParameters (0.3, 1, 0.0, true, juce::ModifierKeys::shiftModifier);   // Shift: fine
             knob.setPopupDisplayEnabled (true, true, nullptr);
             knob.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v)) + "%"; };
-            knob.setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xff7fe0a8));
+            knob.setColour (juce::Slider::rotarySliderFillColourId, Theme::success);
             knob.onDragStart = [this]
             {
                 dragging = true;
@@ -224,7 +224,7 @@ namespace ez
             g.fillRoundedRectangle (r, 4.0f);
             g.setColour (Theme::border);
             g.drawRoundedRectangle (r, 4.0f, 1.0f);
-            g.setColour (isOn ? juce::Colour (0xff7fe0a8) : Theme::border);
+            g.setColour (isOn ? Theme::success : Theme::border);
             g.fillEllipse (r.getX() + 7.0f, r.getCentreY() - 3.0f, 6.0f, 6.0f);
             g.setColour (isOn ? Theme::text : Theme::textDim);
             g.setFont (Theme::font (Theme::captionFontSize + 0.5f));

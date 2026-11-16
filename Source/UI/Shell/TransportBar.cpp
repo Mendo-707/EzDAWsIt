@@ -440,11 +440,13 @@ namespace ez
     //==============================================================================
     void TransportBar::paint (juce::Graphics& g)
     {
-        g.fillAll (Theme::panel);
+        // Slightly lifted above the work area: a touch lighter at the top, a hairline below
+        g.setGradientFill (juce::ColourGradient::vertical (Theme::panel.brighter (0.035f), 0.0f, Theme::panel, (float) getHeight()));
+        g.fillAll();
         g.setColour (Theme::laneSeparator);
         g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
 
-        g.setColour (Theme::border);
+        g.setColour (Theme::hairline.brighter (0.1f));
 
         for (auto x : separatorXs)
             g.fillRect (x, getHeight() / 2 - 11, 1, 22);

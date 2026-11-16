@@ -154,9 +154,11 @@ namespace ez
             fader.setDoubleClickReturnValue (true, 0.0);
             fader.setVelocityModeParameters (0.3, 1, 0.0, true, juce::ModifierKeys::shiftModifier);   // Shift: fine (slow velocity mode)
             fader.setTooltip ("Volume: drag (Shift for fine) or scroll; double-click for 0 dB; click the number below to type");
-            fader.setColour (juce::Slider::trackColourId, Theme::display);
+            fader.setColour (juce::Slider::trackColourId, Theme::accent);
+            fader.setPopupDisplayEnabled (true, true, nullptr);   // the value beside the cap while dragging
+            fader.textFromValueFunction = [] (double db) { return dbText ((float) db) + " dB"; };
             fader.setColour (juce::Slider::backgroundColourId, Theme::display);
-            fader.setColour (juce::Slider::thumbColourId, juce::Colour (0xffd9dde3));
+            fader.setColour (juce::Slider::thumbColourId, juce::Colour (0xffe4e8ee));
             fader.onDragStart = [this] { session.beginUndoStep(); faderDragging = true; if (! isMaster()) session.beginParameterGesture (trackIndex, session.getVolumeParam (trackIndex)); };
             fader.onDragEnd = [this] { faderDragging = false; if (! isMaster()) session.endParameterGesture (trackIndex, session.getVolumeParam (trackIndex)); refresh(); };
             fader.onValueChange = [this]
@@ -213,8 +215,8 @@ namespace ez
                 muteButton.setTooltip ("Mute (M)");
                 soloButton.setTooltip ("Solo: hear only soloed tracks (S)");
                 armButton.setTooltip ("Arm for recording");
-                muteButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffd9a441));
-                soloButton.setColour (juce::TextButton::buttonOnColourId, Theme::accent);
+                muteButton.setColour (juce::TextButton::buttonOnColourId, Theme::mute);
+                soloButton.setColour (juce::TextButton::buttonOnColourId, Theme::solo);
                 armButton.setColour (juce::TextButton::buttonOnColourId, Theme::record);
                 // The design's on colours: amber mute and blue solo with dark text, red arm with white
                 muteButton.setColour (juce::TextButton::textColourOnId, Theme::ink);
@@ -299,7 +301,7 @@ namespace ez
             if (! name.isBeingEdited())
                 name.setText (master ? juce::String ("Master") : session.getTrackName (trackIndex), juce::dontSendNotification);
 
-            colour = master ? juce::Colour (0xffe6e6e6) : session.getTrackColour (trackIndex);
+            colour = master ? Theme::accent : session.getTrackColour (trackIndex);   // the master wears the accent: the strip everything ends in
 
             if (! fader.isMouseButtonDown())
                 fader.setValue (currentVolume(), juce::dontSendNotification);
@@ -367,7 +369,7 @@ namespace ez
             if (peakLabel.getText() != text)
                 peakLabel.setText (text, juce::dontSendNotification);
 
-            peakLabel.setColour (juce::Label::textColourId, reading.clipped ? juce::Colour (0xffd03a3a) : Theme::textDim);
+            peakLabel.setColour (juce::Label::textColourId, reading.clipped ? Theme::record : Theme::textDim);
 
             // Automated controls move as the song plays: follow them here, not twice a second
             if (! isMaster() && session.isPlaying() && session.isAutomationReadOn())
@@ -400,17 +402,23 @@ namespace ez
         {
             const bool highlighted = ! isMaster() && owner.getFocusedTrack && owner.getFocusedTrack() == trackIndex;
             const auto r = getLocalBounds().toFloat().reduced (0.5f);
-            g.setColour (highlighted ? Theme::panel.brighter (0.08f) : Theme::panel);
-            g.fillRoundedRectangle (r, 5.0f);
-            g.setColour (highlighted ? Theme::selection : Theme::border);
-            g.drawRoundedRectangle (r, 5.0f, highlighted ? 1.5f : 1.0f);
+            constexpr auto radius = (float) Theme::cardRadius;
+            g.setColour (highlighted ? Theme::raised : Theme::panel);
+            g.fillRoundedRectangle (r, radius);
 
-            // Colour under the name
+            // The track's colour: a wash down from the top and a bar under the name, so a strip
+            // matches its lane in the arrangement
             if (! colour.isTransparent())
             {
+                g.setGradientFill (juce::ColourGradient::vertical (colour.withAlpha (highlighted ? 0.18f : 0.11f), r.getY(),
+                                                                   colour.withAlpha (0.0f), r.getY() + 90.0f));
+                g.fillRoundedRectangle (r, radius);
                 g.setColour (colour);
-                g.fillRect (name.getX(), name.getBottom(), name.getWidth(), 3);
+                g.fillRoundedRectangle (juce::Rectangle<float> ((float) name.getX(), (float) name.getBottom(), (float) name.getWidth(), 3.0f), 1.5f);
             }
+
+            g.setColour (highlighted ? Theme::accent : isMaster() ? Theme::accent.withAlpha (0.45f) : Theme::hairline.brighter (0.1f));
+            g.drawRoundedRectangle (r, radius, highlighted ? 1.5f : 1.0f);
 
             if (! kindChip.isEmpty())
             {
@@ -427,9 +435,8 @@ namespace ez
             // Inserts
             if (! insertsArea.isEmpty())
             {
-                g.setColour (Theme::textDim);
-                g.setFont (Theme::font (Theme::captionFontSize - 0.5f, true));
-                g.drawText ("INSERTS", insertsArea.withHeight (12), juce::Justification::centredLeft, false);
+                drawCaption (g, "Inserts", insertsArea.withHeight (12));
+                bool firstEmpty = true;
 
                 for (int slot = 0; slot < slotsShown; ++slot)
                 {
@@ -438,24 +445,33 @@ namespace ez
 
                     if (label.isEmpty())
                     {
-                        g.setColour (juce::Colour (0xff3e434e));
-                        const float dashes[] = { 3.0f, 3.0f };
-                        juce::Path p;
-                        p.addRoundedRectangle (box.reduced (0.5f), 3.0f);
-                        juce::Path dashed;
-                        juce::PathStrokeType (1.0f).createDashedStroke (dashed, p, dashes, 2);
-                        g.fillPath (dashed);
+                        // Empty: a shallow well; the first one says where a new effect goes
+                        g.setColour (slot == hoveredSlot ? Theme::hover.withAlpha (0.6f) : Theme::display.withAlpha (0.55f));
+                        g.fillRoundedRectangle (box, (float) Theme::smallRadius);
+                        g.setColour (slot == hoveredSlot ? Theme::border : Theme::hairline);
+                        g.drawRoundedRectangle (box.reduced (0.5f), (float) Theme::smallRadius, 1.0f);
+
+                        if ((std::exchange (firstEmpty, false) || slot == hoveredSlot) && box.getHeight() >= 14.0f)
+                        {
+                            g.setColour (Theme::textFaint);
+                            g.setFont (Theme::font (Theme::captionFontSize + 0.5f));
+                            g.drawText ("+ Add", box.reduced (6.0f, 0.0f), juce::Justification::centredLeft, false);
+                        }
+
                         continue;
                     }
 
                     const bool bypassed = slotIsBypassed (slot);
-                    g.setColour (Theme::raised);
-                    g.fillRoundedRectangle (box, 3.0f);
+                    g.setColour (slot == hoveredSlot ? Theme::hover : Theme::raised);
+                    g.fillRoundedRectangle (box, (float) Theme::smallRadius);
+                    // A small light: on (green) or bypassed (dim)
+                    g.setColour (bypassed ? Theme::textFaint : Theme::success);
+                    g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre ({ box.getX() + 6.0f, box.getCentreY() }));
                     g.setColour (Theme::border);
-                    g.drawRoundedRectangle (box.reduced (0.5f), 3.0f, 1.0f);
+                    g.drawRoundedRectangle (box.reduced (0.5f), (float) Theme::smallRadius, 1.0f);
                     g.setColour (bypassed ? Theme::textDim : Theme::text);
                     g.setFont (Theme::font (Theme::captionFontSize + 0.5f));
-                    g.drawText (label, box.reduced (5.0f, 0.0f), juce::Justification::centredLeft, true);
+                    g.drawText (label, box.reduced (5.0f, 0.0f).withTrimmedLeft (7.0f), juce::Justification::centredLeft, true);
                 }
 
                 if (inserts.size() > slotsShown)
@@ -578,6 +594,28 @@ namespace ez
             fader.setBounds (r);
         }
 
+        void mouseMove (const juce::MouseEvent& e) override
+        {
+            int over = -1;
+
+            if (e.eventComponent == this)
+                for (int slot = 0; slot < slotsShown; ++slot)
+                    if (slotBounds (slot).contains (e.getPosition()))
+                        over = slot;
+
+            if (over != hoveredSlot)
+            {
+                hoveredSlot = over;
+                repaint (insertsArea);
+            }
+        }
+
+        void mouseExit (const juce::MouseEvent&) override
+        {
+            if (std::exchange (hoveredSlot, -1) >= 0)
+                repaint (insertsArea);
+        }
+
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (! isMaster() && owner.setFocusedTrack)
@@ -663,7 +701,7 @@ namespace ez
         juce::Colour colour;
         juce::Rectangle<int> insertsArea, lufsArea, sendsArea, kindChip;
         juce::String lufsText;
-        int scaleX = 0, slotsShown = insertSlots, sendRowsShown = 0;
+        int scaleX = 0, slotsShown = insertSlots, sendRowsShown = 0, hoveredSlot = -1;
         bool panDragging = false, faderDragging = false, sendDragging = false, sendGestureStarted = false;
         Session::TrackKind kind = Session::TrackKind::normal;
         juce::Label routeInfo;

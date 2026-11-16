@@ -16,6 +16,7 @@
 #include "Engine/Session.h"
 #include "Core/AppPaths.h"
 #include "Tests/TestRunner.h"
+#include "Tests/Screenshots.h"
 #include "UI/PluginWindows.h"
 #include "UI/Dialogs.h"
 #include "UI/MainComponent.h"
@@ -34,7 +35,8 @@ namespace ez
         bool moreThanOneInstanceAllowed() override
         {
             // Tests may run while the app is open; the app itself is single-instance
-            return getCommandLineParameters().contains (Tests::commandLineFlag);
+            return getCommandLineParameters().contains (Tests::commandLineFlag)
+                || getCommandLineParameters().contains (Screenshots::commandLineFlag);
         }
 
         void initialise (const juce::String& commandLine) override
@@ -42,6 +44,20 @@ namespace ez
             if (commandLine.contains (Tests::commandLineFlag))
             {
                 runTestsAndQuit (commandLine);
+                return;
+            }
+
+            if (commandLine.contains (Screenshots::commandLineFlag))
+            {
+                auto args = juce::StringArray::fromTokens (commandLine, true);
+                const auto i = args.indexOf (Screenshots::commandLineFlag);
+                const auto folder = i + 1 < args.size() ? juce::File::getCurrentWorkingDirectory().getChildFile (args[i + 1].unquoted())
+                                                        : juce::File::getCurrentWorkingDirectory().getChildFile ("screenshots");
+                diagnostics = std::make_unique<Diagnostics> (getApplicationName() + " screenshots", getApplicationVersion());
+                juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+                setApplicationReturnValue (Screenshots::run (folder) == 0 ? 0 : 1);
+                juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+                quit();
                 return;
             }
 

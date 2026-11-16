@@ -67,7 +67,7 @@ namespace ez
             const bool isSelected = owner.selectedPad == index;
             const auto colour = DrumKits::getPadColour (index);
 
-            g.setColour (juce::Colour (0xff2a2e36).brighter (isMouseOver() ? 0.08f : 0.0f).interpolatedWith (colour, flash * 0.45f));
+            g.setColour (Theme::raised.brighter (isMouseOver() ? 0.08f : 0.0f).interpolatedWith (colour, flash * 0.45f));
             g.fillRoundedRectangle (r, 5.0f);
             g.setColour (owner.dropPad == index ? Theme::accent : isSelected ? Theme::selection : Theme::border);
             g.drawRoundedRectangle (r.reduced (isSelected || owner.dropPad == index ? 0.5f : 0.0f), 5.0f, isSelected || owner.dropPad == index ? 2.0f : 1.0f);
@@ -597,7 +597,7 @@ namespace ez
                         if (velocity > 0)
                             g.setColour ((s.muted ? colour.withSaturation (0.15f) : colour).withMultipliedBrightness (0.55f + 0.45f * (float) velocity / 127.0f));
                         else
-                            g.setColour (beatGroup ? juce::Colour (0xff2e323b) : juce::Colour (0xff272a31));
+                            g.setColour (beatGroup ? Theme::raised : Theme::panel);
 
                         g.fillRoundedRectangle (cell, 3.0f);
                         g.setColour (step == playingStep ? Theme::playhead.withAlpha (0.7f) : Theme::laneSeparator);
