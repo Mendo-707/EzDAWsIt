@@ -1,0 +1,8 @@
+build/
+deps/
+app/
+build-linux-check/
+build-log.txt
+test-results.txt
+setup-report.txt
+dist/
