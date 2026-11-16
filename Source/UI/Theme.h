@@ -66,13 +66,55 @@ namespace ez::Theme
     inline const juce::Colour chipBorder   { 0xff4a5160 };
     inline const juce::Colour chipText     { 0xffd3d8e0 };
 
-    // Plug-in displays: EQ band handles (one colour per band) and the Tune keyboard
-    inline const juce::Colour bandColours[] { juce::Colour (0xfff5b544), juce::Colour (0xff3dd68c), juce::Colour (0xff4d9fff), juce::Colour (0xffb58cff) };
+    // Plug-in displays: EQ band handles (one colour per band; pink, not purple, so it never reads as modulation)
+    inline const juce::Colour bandColours[] { juce::Colour (0xfff5b544), juce::Colour (0xff3dd68c), juce::Colour (0xff4d9fff), juce::Colour (0xffff7ab8) };
     inline const juce::Colour keyWhite     { 0xffd8dde6 };   // a white key in the scale
     inline const juce::Colour keyWhiteOff  { 0xff4a505c };   // a white key outside the scale
     inline const juce::Colour keyBlack     { 0xff3a404c };   // a black key in the scale
     inline const juce::Colour keyBlackOff  { 0xff0c0e12 };   // a black key outside the scale
     constexpr float plannedAlpha = 0.5f;
+
+    //==============================================================================
+    /** Plug-in windows (docs/ui/DESIGN-NOTES.md, "Plug-in windows"): three depths (chassis, module,
+        screen) and one colour per kind of signal, used the same way in every plug-in. */
+    namespace Plugin
+    {
+        // Surfaces: the window (chassis), raised cards (modules) and recessed displays (screens)
+        inline const juce::Colour chassis           { 0xff101218 };
+        inline const juce::Colour chassisEdge       { 0xff1a1d25 };
+        inline const juce::Colour moduleTop         { 0xff1d2029 };
+        inline const juce::Colour moduleBottom      { 0xff171a21 };
+        inline const juce::Colour moduleEdgeHi      { 0x0fffffff };   // 6 % white: the lit top edge
+        inline const juce::Colour moduleEdgeLo      { 0x73000000 };   // 45 % black outline
+        inline const juce::Colour moduleShadow      { 0x8c000000 };
+        inline const juce::Colour screen            { 0xff090b0f };
+        inline const juce::Colour screenGrid        { 0x0affffff };   // 4 %
+        inline const juce::Colour screenGridMajor   { 0x17ffffff };   // 9 %: decades, 0 dB
+        inline const juce::Colour screenLabel       { 0xff5d6575 };
+        inline const juce::Colour recess            { 0xff0e1015 };   // tracks of segmented controls and steppers
+
+        // Signals
+        inline const juce::Colour signal            { 0xff4d9fff };   // the audio path
+        inline const juce::Colour mod               { 0xffb58cff };   // anything modulated
+        inline const juce::Colour env               { 0xff3dd68c };   // envelopes
+        inline const juce::Colour gainReduction     { 0xfff5b544 };   // compression, thresholds, automation
+        inline const juce::Colour hot               { 0xffff6369 };   // clipping
+        inline const juce::Colour off               { 0xff4a505c };   // a curve or arc in a module that is off
+
+        // Knobs
+        inline const juce::Colour knobTrack         { 0x12ffffff };   // 7 %
+        inline const juce::Colour knobTrackHover    { 0x1fffffff };   // 12 %
+        inline const juce::Colour capTop            { 0xff2c313c };
+        inline const juce::Colour capBottom         { 0xff14171d };
+
+        constexpr int knobSmall = 34, knobNormal = 46, knobLarge = 64, knobHero = 84;
+        constexpr int cardRadius = 10, screenRadius = 8, controlRadius = 6, windowRadius = 12;
+        constexpr int cardPadding = 14, cardGap = 10, margin = 14, cardTitleHeight = 32;
+        constexpr int headerHeight = 56;
+        constexpr float handleRadius = 7.0f;        // 14 px handles
+        constexpr float handleHitRadius = 14.0f;    // 28 px to grab one
+        constexpr float offModuleAlpha = 0.55f;     // knob caps of a module that is off
+    }
 
     //==============================================================================
     // Window and layout (see the "shell" in docs/ui/DESIGN-NOTES.md)

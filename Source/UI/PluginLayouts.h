@@ -32,12 +32,24 @@ namespace ez::PluginLayouts
 
     struct Item
     {
-        enum class Size { small, normal, large };
-        enum class Style { automatic, knob, toggle, menu, buttons };
+        enum class Size { small, normal, large, hero };   // hero: the one big knob of a plugin
+        enum class Style { automatic, knob, toggle, menu, buttons, stepper, fader };
+
+        Item() = default;
+        Item (juce::String idToUse, juce::String labelToUse, Size s = Size::normal, Style st = Style::automatic)
+            : id (std::move (idToUse)), label (std::move (labelToUse)), size (s), style (st) {}
 
         juce::String id, label;
         Size size = Size::normal;
         Style style = Style::automatic;
+        juce::StringArray icons;        // buttons drawn as pictures: "off", "lp", "hp", "bp", "notch"
+        juce::String enabledBy;         // dimmed unless this id's value is >= enabledFrom (or below it, with enabledBelow)
+        float enabledFrom = 1.0f;
+        float enabledUpTo = 1.0e9f;     // ... and <= this
+        bool enabledBelow = false;
+        juce::String disabledTip;       // why it's dimmed
+        juce::String unit;              // added to values that come without one ("0" -> "0 dB")
+        int span = 0;                   // grid columns (0: the control decides)
     };
 
     struct Section
@@ -54,7 +66,14 @@ namespace ez::PluginLayouts
         std::vector<Item> items;
         int columns = 4;                            // knobs per row
         float weight = 1.0f;                        // share of the row's width
-        juce::String custom;                        // a special body: "modMatrix", "delaySync"
+        juce::String custom;                        // a special body: "modMatrix", "delaySync", "ampTypes", "cabinet"
+        enum class Signal { audio, envelope, modulation, dynamics } signal = Signal::audio;   // the card's colour
+        juce::String titleToggle;                   // a small on/off chip in the title row ("Analog", "Sync")
+        int band = -1;                              // an EQ band: its colour along the card's top
+        bool bare = false;                          // no title row: the display is the card
+        bool chainNext = false;                     // a chevron to the next card: the sound flows on
+        bool rememberPower = false;
+        bool knobsFirst = false;                    // knobs on top, switches and faders underneath                 // the power switch restores the last value, not 1 (oscillator waves)
         juce::String tip;                           // tooltip on the title
     };
 
@@ -70,6 +89,8 @@ namespace ez::PluginLayouts
         std::vector<Setting> settings;
         int width = 640;
         juce::String description;   // under the name in the header
+        juce::StringArray headerToggles;   // small switches in the header (the EQ's phase invert)
+        juce::StringArray planned;         // features drawn as Planned in the header's tooltip and docs
     };
 
     /** The layout for a built-in plugin, or nothing (the editor then lays out every parameter). */

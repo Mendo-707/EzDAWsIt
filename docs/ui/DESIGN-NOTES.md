@@ -216,15 +216,40 @@ Selected = lit tint, inner glow and a 1.5 px selection edge.
 
 ## Plug-in windows
 
-Every built-in plug-in opens a designed window (UI/ParamEditor + UI/PluginLayouts), not a wall of knobs:
-- Header: power (bypass), name and a one-line description, page tabs (Ctrl+1..4), presets menu
-  (built in / yours / save as / delete / open folder), A/B compare (right-click copies), Reset.
-- Cards with a live display on top: EQ curve with draggable bands (wheel = Q, double-click = 0 dB), compressor/gate/limiter
-  transfer curves, filter responses, ADSR envelopes you can drag, oscillator and LFO waves, delay taps, reverb tail,
-  Tune keyboard showing the scale, stereo picture.
-- Knobs: drag, Shift-drag fine, double-click resets, wheel steps, double-click the value to type it (units like "2k", "1.5 s"),
-  right-click for reset / type a value. Values are tidied ("0 dB", "C", "17 kHz").
-- Planned (not built yet): "Show automation" and "MIDI learn" in a knob's right-click menu, preset browser search,
-  and a live input/output meter in the dynamics displays.
-- 4OSC: four pages (Oscillators, Filter & Amp, Modulation with a routing matrix, Effects with per-effect power).
-- Delay: sync-to-tempo note buttons. Unknown plug-ins fall back to a tidy grid of every parameter.
+Spec: "EzDAWsIt plug-in design spec" (the shared doc). Three depths: chassis (window), module (raised card), screen
+(recessed display). One colour per signal: blue audio, green envelopes, purple modulation, amber dynamics/automation.
+Tokens: `Theme::Plugin` in UI/Theme.h. Drawing: UI/PluginLook (knobs, segments, toggles, bubble, cards, screens, handles).
+
+Built:
+- Knobs: track, glowing value arc from the default (bipolar for ranges through 0 with a centred default), machined cap,
+  pointer that turns blue when touched, value bubble while dragging (the label dims), purple modulation ring (4OSC
+  routings), amber dot when automation plays it, grey when the card is off. Hero knob (84 px) per plug-in.
+- Cards: gradient, lit top edge, shadow, caps title, a coloured spine, round glowing power, title switches (Analog, Sync),
+  EQ band colour strip. Off cards go grey but stay usable; a bypassed plug-in greys every card and shows an amber strip.
+- Header: power, name + description, segmented page tabs (Ctrl+1..4, Modulation shows its routing count), preset bar
+  (previous / name with an edited dot / next, Ctrl+Left/Right; click the name for the menu), A | copy | B, Reset,
+  header switches (EQ phase invert), a Planned chip listing what's coming.
+- Screens: inner shadow, 1-2-5 log grid with labels inside, curves one point per pixel with glow and fade fill, 14 px
+  handles (28 px to grab) with a value tag while dragging, off states that say what brings them back.
+- EQ: full-width screen, each band's own curve and fill, numbered colour handles, Alt-drag/wheel = Q, Shift = fine.
+- Compressor/gate/limiter: square transfer screen, 1:1 line, amber working region, draggable threshold (Alt: ratio).
+  Our gate and limiter also show a live level ball with trail, in/out meters and a GR meter with peak hold.
+- Delay: echo pings on a beat ruler (bars at the song's tempo), drag the first echo (time snaps to notes, Alt: free;
+  up/down: feedback), note grid (straight / dotted / triplet) that lights the matching length.
+- Amp: six amp-type cards with wave pictures (wheel steps), hero gain warming to amber, tone screen with markers,
+  cabinet picture with arrows and a gate lamp.
+- 4OSC: one window height on every page. Oscillators: 110 px two-cycle screens with unison copies, wave arrows in the
+  screen (click for all, wheel steps), Level fader, Unison stepper, Detune/Spread/Width dim when they don't apply,
+  power remembers the wave. Filter & Amp: 150 px filter screen with envelope ghost, click-to-enable off state, icon type
+  buttons, hero cut-off; curved ADSR screens with four handles. Modulation: LFO / mod-env source cards (purple), Sync in
+  the title, Length stepper vs Rate; full-width routing matrix (source chip, grouped destinations, bipolar amount bar,
+  remove on hover, up to 8), empty state with ghost rows and two one-click starters. Effects: four equal cards with
+  mini-screens and chevrons in signal order, Ping-pong as a switch; Voice strip (mode, polyphony stepper, glide and
+  level faders).
+
+Planned (shown in the Planned chip / greyed menu items):
+- Knob right-click: show automation lane, MIDI learn.
+- Compressor: GR meter and live ball (Tracktion's compressor publishes no levels), auto make-up, sidechain source picker.
+- EQ: real-time analyzer, per-band power. Delay: ping-pong and repeat filters (not in the engine's delay), follow tempo.
+- Amp: mic position. 4OSC: drag a source onto a knob to route it, live envelope/LFO position dots.
+- Caching each screen's static layer in an image (repaints are already limited to value changes and live meters).

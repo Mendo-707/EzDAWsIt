@@ -14,6 +14,7 @@
 #pragma once
 
 #include "../Core/Common.h"
+#include "Theme.h"
 
 namespace ez::PluginDisplays
 {
@@ -27,6 +28,10 @@ namespace ez::PluginDisplays
         virtual void set (const juce::String& id, float value) = 0;
         virtual void endDrag (const juce::String& id) = 0;
         virtual double getBpm() const = 0;
+
+        /** Live levels in dB: "in" and "out" (peaks), "gr" (gain reduction, 0 or less). Nothing when the
+            plugin doesn't publish them (Tracktion's own effects). */
+        virtual std::optional<float> getLevel (const juce::String& which) const = 0;
     };
 
     enum class Type
@@ -48,7 +53,10 @@ namespace ez::PluginDisplays
         reverb,         // ids: room size, damping, wet, width, freeze
         keys,           // ids: root (0-11), scale (0 chromatic, 1 major, 2 minor)
         stereo,         // ids: width (0-200), mono, flip left, flip right
-        ampTone         // ids: tight, bass, mid, treble, presence
+        ampTone,        // ids: tight, bass, mid, treble, presence
+        modEnvelope,    // as envelope, in the modulation colour (the synth's mod envelopes)
+        softClip,       // ids: drive (0-1): the synth's distortion
+        synthDelay      // ids: time (beats), feedback (dB), mix (0-1), crossfeed (dB: ping-pong above -100)
     };
 
     /** A display that redraws when the values it shows change (call refresh() from a timer). */
@@ -58,15 +66,27 @@ namespace ez::PluginDisplays
         Display (Values&, juce::StringArray ids);
         void refresh();
 
+        /** The module this display sits in is off: curves go grey and an "Off" note shows. */
+        void setActive (bool);
+
+        /** Displays that show live levels (meters, a ball on a curve) repaint on every refresh. */
+        virtual bool isLive() const     { return false; }
+
     protected:
         Values& values;
         juce::StringArray ids;
         float v (int index) const     { return juce::isPositiveAndBelow (index, ids.size()) ? values.get (ids[index]) : 0.0f; }
+        bool active = true;
+
+        /** A signal colour, or grey while the module is off. */
+        juce::Colour tint (juce::Colour c) const    { return active ? c : Theme::Plugin::off; }
 
         /** The plot area inside the well, and the well itself. */
         juce::Rectangle<float> plotArea() const;
         void drawBackground (juce::Graphics&);
         void drawFrequencyGrid (juce::Graphics&, juce::Rectangle<float>, float dbRange);
+        /** A path through the plot, one point per pixel. */
+        static juce::Path curveThrough (juce::Rectangle<float> area, const std::function<float (float x)>& yForX);
         void drawDbGrid (juce::Graphics&, juce::Rectangle<float>, float minDb, float maxDb);
 
         static float xForHz (juce::Rectangle<float> area, float hz);

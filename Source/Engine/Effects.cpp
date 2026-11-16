@@ -142,7 +142,29 @@ namespace ez
 
         float* channels[2] = { buffer.getWritePointer (0, rc.bufferStartSample),
                                numChannels > 1 ? buffer.getWritePointer (1, rc.bufferStartSample) : nullptr };
+        // Peaks for the editor's meters: the highest since the UI last took them (no locks, no allocation)
+        const auto peakOf = [&]
+        {
+            float peak = 0.0f;
+
+            for (int c = 0; c < numChannels; ++c)
+            {
+                const auto range = juce::FloatVectorOperations::findMinAndMax (channels[c], rc.bufferNumSamples);
+                peak = juce::jmax (peak, std::abs (range.getStart()), std::abs (range.getEnd()));
+            }
+
+            return peak;
+        };
+
+        const auto raise = [] (std::atomic<float>& target, float value)
+        {
+            auto current = target.load (std::memory_order_relaxed);
+            while (value > current && ! target.compare_exchange_weak (current, value, std::memory_order_relaxed)) {}
+        };
+
+        raise (inputPeak, peakOf());
         process (channels, numChannels, rc.bufferNumSamples);
+        raise (outputPeak, peakOf());
     }
 
     void EffectPlugin::restorePluginStateFromValueTree (const juce::ValueTree& v)

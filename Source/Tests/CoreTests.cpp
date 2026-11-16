@@ -22,6 +22,8 @@
 #include "../Engine/PluginPresets.h"
 #include "../UI/PluginLayouts.h"
 #include "../UI/PluginDisplays.h"
+#include "../UI/PluginLook.h"
+#include "../UI/ParamEditor.h"
 
 namespace ez::Tests
 {
@@ -360,6 +362,13 @@ namespace ez::Tests
 
                                 if (section.powerId.isNotEmpty())
                                     expect (resolves (section.powerId), plugin->getName() + ": power " + section.powerId);
+
+                                if (section.titleToggle.isNotEmpty())
+                                    expect (resolves (section.titleToggle), plugin->getName() + ": title switch " + section.titleToggle);
+
+                                for (const auto& item : section.items)
+                                    if (item.enabledBy.isNotEmpty())
+                                        expect (resolves (item.enabledBy), plugin->getName() + ": " + item.id + " depends on " + item.enabledBy);
                             }
 
                     for (const auto& preset : PluginPresets::getFactory (plugin->getPluginType()))
@@ -450,6 +459,62 @@ namespace ez::Tests
                     beginTest ("The preset name shown in the window is kept with the plug-in");
                     PluginPresets::setCurrentName (*synth, "Warm pad");
                     expectEquals (PluginPresets::getCurrentName (*synth), juce::String ("Warm pad"));
+                }
+            }
+
+            beginTest ("Knob arcs grow from the middle for pan, tune and gain, from the left for everything else");
+            {
+                juce::Slider pan, cutoff;
+                pan.setRange (-1.0, 1.0);
+                cutoff.setRange (20.0, 20000.0);
+                expectWithinAbsoluteError (PluginLook::arcOrigin (pan), 0.5f, 0.001f);
+                expectWithinAbsoluteError (PluginLook::arcOrigin (cutoff), 0.0f, 0.001f);
+                cutoff.getProperties().set ("ezDefault", 10010.0);
+                expectWithinAbsoluteError (PluginLook::arcOrigin (cutoff), 0.5f, 0.01f);
+            }
+
+            beginTest ("Our effects publish input and output peaks for the meters, and taking them clears them");
+            {
+                UtilityPlugin* utility = nullptr;
+
+                for (auto& p : plugins)
+                    if (auto* u = dynamic_cast<UtilityPlugin*> (p.get()))
+                        utility = u;
+
+                expect (utility != nullptr);
+
+                if (utility != nullptr)
+                {
+                    utility->getControl (0)->setParameter (6.0f, juce::sendNotificationSync);   // +6 dB gain
+                    utility->baseClassInitialise ({ te::TimePosition(), 44100.0, 512 });
+                    utility->takeInputPeak();
+                    utility->takeOutputPeak();
+                    juce::AudioBuffer<float> buffer (2, 512);
+
+                    for (int i = 0; i < 512; ++i)
+                        for (int c = 0; c < 2; ++c)
+                            buffer.setSample (c, i, 0.25f * (float) std::sin (i * 0.1));
+
+                    utility->applyToBuffer (te::PluginRenderContext (&buffer, 0, 512, nullptr, 0.0, {}, true, false, false, false));
+                    const auto in = utility->takeInputPeak(), out = utility->takeOutputPeak();
+                    expectWithinAbsoluteError (in, 0.25f, 0.01f);
+                    expect (out > in * 1.8f && out < in * 2.2f, "the output meter sees the +6 dB: " + juce::String (out));
+                    expectEquals (utility->takeInputPeak(), 0.0f, "taken: the next block starts from silence");
+                    utility->getControl (0)->setParameter (0.0f, juce::sendNotificationSync);
+                }
+            }
+
+            beginTest ("The synth's window keeps one height on every page, so it never jumps when you change tabs");
+            if (synth != nullptr)
+            {
+                auto editor = ParamEditor::createContent (*synth);
+                const auto height = editor->getHeight();
+                expect (height > 300);
+
+                for (int page = 2; page <= 4; ++page)
+                {
+                    expect (editor->keyPressed (juce::KeyPress ('0' + page, juce::ModifierKeys::commandModifier, 0)), "Ctrl+" + juce::String (page) + " shows a page");
+                    expectEquals (editor->getHeight(), height);
                 }
             }
 

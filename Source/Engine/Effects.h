@@ -55,6 +55,11 @@ namespace ez
         te::AutomatableParameter* getControl (int index)    { return juce::isPositiveAndBelow (index, (int) params.size()) ? params[(size_t) index].get() : nullptr; }
         int getNumControls() const noexcept                 { return (int) params.size(); }
 
+        /** Peak levels (linear) of the last block in and out, for the editor's meters. The audio thread
+            writes; the UI takes them with takeInputPeak()/takeOutputPeak(), which also clear them. */
+        float takeInputPeak() noexcept      { return inputPeak.exchange (0.0f, std::memory_order_relaxed); }
+        float takeOutputPeak() noexcept     { return outputPeak.exchange (0.0f, std::memory_order_relaxed); }
+
         bool takesMidiInput() override                      { return false; }
         bool takesAudioInput() override                     { return true; }
         bool producesAudioWhenNoAudioInput() override       { return false; }
@@ -81,6 +86,7 @@ namespace ez
         juce::OwnedArray<juce::CachedValue<float>> values;
         std::vector<te::AutomatableParameter::Ptr> params;   // a strong ref: te::Plugin drops its own before our destructor ends
         std::atomic<bool> prepared { false };
+        std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
         bool tornDown = false;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectPlugin)

@@ -254,3 +254,6 @@ Format: **Symptom** -> cause -> fix. Add the short version to the Pitfalls list 
 - `FourOscPlugin::flushPluginStateToValueTree()` is private: call it through `te::Plugin&`.
 - `juce::String (double, 0)` means "full precision", not "no decimals": round to int instead.
 - Tracktion's Delay grows its buffer inside applyToBuffer when the time gets longer (allocates on the audio thread).
+- Non-ASCII text in string literals (·, ◀, →) must go through `juce::CharPointer_UTF8`, or JUCE asserts.
+- Tracktion's CompressorPlugin keeps its detector level private: no gain reduction meter without our own compressor.
+- A level the UI "takes" (exchange to 0) must be read once per frame in one place (the editor's timer), never from paint.
