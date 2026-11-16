@@ -60,6 +60,7 @@ namespace ez
             menu.addCommandItem (&commands, CommandIDs::showShortcuts);
             menu.addSeparator();
             menu.addCommandItem (&commands, CommandIDs::openLogFolder);
+            menu.addCommandItem (&commands, CommandIDs::checkForUpdates);
             menu.addCommandItem (&commands, CommandIDs::showAbout);
             menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (helpButton));
         };

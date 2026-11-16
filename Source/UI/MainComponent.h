@@ -97,15 +97,21 @@ namespace ez
 
         void openStartupSong();
         void showAboutBox();
+        void checkForUpdatesNow();
+        std::atomic<bool> updateCheckRunning { false };
 
     public:
         /** A song double-clicked in Explorer or opened with "Open with". At start-up it is opened
             instead of the last song; later the open song is saved first, as for File > Open. */
         void openSongFromSystem (const juce::File&);
 
+        /** Shown once the window is up, after a run that didn't close cleanly: offers to open its log. */
+        void offerPreviousRunLog (const juce::File& log, bool crashed);
+
     private:
         juce::File songFromSystem;   // opened by openStartupSong when set
         bool startupSongOpened = false;
+        juce::ScopedMessageBox previousRunBox;
         void openSongWithRecoveryCheck (const juce::File&, bool createNewSongIfItFails = false);
         void askForNewSongName (int templateIndex = -1);   // index into the song templates; -1: Empty song
         void chooseSongToOpen();

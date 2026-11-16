@@ -527,6 +527,17 @@ namespace ez
         /** On a clip whose colour the user picked (Tracktion gives every new clip a colour of its own). */
         static inline const juce::Identifier userColourProp { "ezUserColour" };
 
+        /** Every save stamps the song with the format it was written in. A song from a newer
+            EzDAWsIt (a higher number) is refused rather than opened: saving it here could drop
+            what this version doesn't understand. Raise this when the song format changes in a
+            way an older EzDAWsIt would misread. */
+        static constexpr int songFormatVersion = 1;
+        static inline const juce::Identifier formatVersionProp { "ezFormatVersion" };
+        static inline const juce::Identifier savedWithProp { "ezSavedWith" };
+
+        /** The format a song file was saved in: 0 for songs from before the stamp (or unreadable). */
+        static int readSongFormatVersion (te::Engine&, const juce::File&);
+
         /** Length of the song: the end of the last clip. */
         te::TimeDuration getSongLength() const;
 

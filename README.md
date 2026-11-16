@@ -4,6 +4,21 @@ A powerful but easy DAW: record, arrange, mix and master in one app.
 
 Windows 10/11 (64-bit). Published by EzDAW. Version 1.0.0.
 
+![EzDAWsIt: the arrangement](docs/screenshots/arrange.png)
+
+| Mix | Master | Clip editor |
+| --- | --- | --- |
+| ![Mixer](docs/screenshots/mix.png) | ![Master](docs/screenshots/master.png) | ![Clip editor](docs/screenshots/clip-editor.png) |
+
+## Download
+
+Get the installer from the [Releases page](https://github.com/Mendo-707/ezdawsit/releases/latest).
+1.0.0 is a beta: please report problems on the [Issues page](https://github.com/Mendo-707/ezdawsit/issues),
+with the log from **Help > Open the log folder**.
+
+Windows may warn "Windows protected your PC" because the installer isn't code-signed yet:
+click **More info**, then **Run anyway**.
+
 ## Install
 
 Run `EzDAWsIt-Setup-<version>.exe`. It installs EzDAWsIt for everyone on the PC (or only you, without

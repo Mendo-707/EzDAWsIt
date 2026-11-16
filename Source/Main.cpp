@@ -34,13 +34,29 @@ namespace ez
 
         bool moreThanOneInstanceAllowed() override
         {
-            // Tests may run while the app is open; the app itself is single-instance
+            // Tests and the plugin scanner run alongside the app; the app itself is single-instance
             return getCommandLineParameters().contains (Tests::commandLineFlag)
-                || getCommandLineParameters().contains (Screenshots::commandLineFlag);
+                || getCommandLineParameters().contains (Screenshots::commandLineFlag)
+                || isPluginScanner (getCommandLineParameters());
+        }
+
+        /** The app starts a copy of itself to scan plugins (see AudioEngine::Behaviour). */
+        static bool isPluginScanner (const juce::String& commandLine)
+        {
+            return commandLine.contains ("--PluginScan:");
         }
 
         void initialise (const juce::String& commandLine) override
         {
+            // A plugin-scanning copy: no window, no log, no audio. It scans what it's asked to and exits.
+            if (isPluginScanner (commandLine))
+            {
+                if (! te::PluginManager::startChildProcessPluginScan (commandLine))
+                    quit();   // started by hand, or the app that asked has gone: never open a second copy
+
+                return;
+            }
+
             if (commandLine.contains (Tests::commandLineFlag))
             {
                 runTestsAndQuit (commandLine);
@@ -71,6 +87,10 @@ namespace ez
             UiMode::initialise (audioEngine->getEngine());
             mainWindow  = std::make_unique<MainWindow> (getApplicationName(), *audioEngine, *session);
             mainWindow->openSongFromSystem (AppPaths::findSongInCommandLine (commandLine));
+
+            // The last run ended badly: offer its log, which is what a bug report needs
+            if (diagnostics->getUncleanPreviousLog().existsAsFile())
+                mainWindow->offerPreviousRunLog (diagnostics->getUncleanPreviousLog(), diagnostics->previousRunCrashed());
         }
 
         void shutdown() override
@@ -133,6 +153,12 @@ namespace ez
             {
                 if (auto* main = dynamic_cast<MainComponent*> (getContentComponent()))
                     main->openSongFromSystem (file);
+            }
+
+            void offerPreviousRunLog (const juce::File& log, bool crashed)
+            {
+                if (auto* main = dynamic_cast<MainComponent*> (getContentComponent()))
+                    main->offerPreviousRunLog (log, crashed);
             }
 
             void closeButtonPressed() override

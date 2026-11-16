@@ -44,6 +44,15 @@ namespace ez
     }
 
     //==============================================================================
+    int Session::readSongFormatVersion (te::Engine& engine, const juce::File& file)
+    {
+        if (file.getSize() <= 0)
+            return 0;
+
+        return (int) te::loadEditFromFile (engine, file, te::ProjectItemID {})[formatVersionProp];
+    }
+
+    //==============================================================================
     Session::Session (AudioEngine& engineToUse)
         : audioEngine (engineToUse),
           selectionManager (engineToUse.getEngine())
@@ -105,6 +114,10 @@ namespace ez
                 return fail ("The autosave for " + file.getFileNameWithoutExtension()
                              + " is damaged, so it can't be restored. Your saved song was not changed.");
 
+            if (readSongFormatVersion (engine, autosave) > songFormatVersion)
+                return fail ("The autosave for " + file.getFileNameWithoutExtension()
+                             + " was made by a newer EzDAWsIt. Update EzDAWsIt to restore it. Nothing was changed.");
+
             const auto backup = makeBackupFile (file, "before restore");
 
             if (! file.copyFileTo (backup) || ! autosave.copyFileTo (file))
@@ -117,6 +130,14 @@ namespace ez
         if (! isReadableSong (engine, file))
             return fail ("This song file is damaged and could not be opened:\n" + file.getFullPathName()
                          + (hasAutosave && ! useAutosave ? "\n\nAn autosave exists: open it again and choose Restore." : ""));
+
+        if (readSongFormatVersion (engine, file) > songFormatVersion)
+        {
+            const auto savedWith = te::loadEditFromFile (engine, file, te::ProjectItemID {})[savedWithProp].toString();
+            return fail ("\"" + file.getFileNameWithoutExtension() + "\" was saved by a newer EzDAWsIt"
+                         + (savedWith.isNotEmpty() ? " (" + savedWith + ")" : juce::String())
+                         + ".\n\nUpdate EzDAWsIt (Help > Check for updates) to open it. The song was not changed.");
+        }
 
         // Move the old autosave aside (never delete it) before the engine writes its own next to the song
         if (hasAutosave)
@@ -332,6 +353,15 @@ namespace ez
                                         : "An emergency copy could not be saved either."));
             return false;
         }
+
+        // Stamp the format (undo-free: it isn't an edit the user made)
+        if ((int) edit->state[formatVersionProp] != songFormatVersion)
+            edit->state.setProperty (formatVersionProp, songFormatVersion, nullptr);
+
+       #ifdef JUCE_APPLICATION_VERSION_STRING
+        if (edit->state[savedWithProp].toString() != "EzDAWsIt " JUCE_APPLICATION_VERSION_STRING)
+            edit->state.setProperty (savedWithProp, "EzDAWsIt " JUCE_APPLICATION_VERSION_STRING, nullptr);
+       #endif
 
         const auto fingerprint = getContentFingerprint();
         bool saved = false;

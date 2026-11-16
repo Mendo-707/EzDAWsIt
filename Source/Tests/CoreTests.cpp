@@ -17,6 +17,8 @@
 #include "../Engine/Session.h"
 #include "../UI/RecordingSetup.h"
 #include "../Engine/MidiLearn.h"
+#include "../Core/Version.h"
+#include "../Core/Diagnostics.h"
 
 namespace ez::Tests
 {
@@ -271,12 +273,146 @@ namespace ez::Tests
             runExportPresetTests (session);
             runAudioEditTests (session, songFile, testFolder.folder);
             runExportTests (session, testFolder.folder);
+            runReleaseTests (session, songFile, testFolder.folder, engine->getEngine());
 
             session.closeSong();
             removeTestMidiInput (engine->getEngine().getDeviceManager());
         }
 
     private:
+        /** What a public release needs beyond the features: updates, crash reports, file safety
+            across versions, plugin safety, and a big song that still saves and loads quickly. */
+        void runReleaseTests (Session& session, const juce::File& songFile, const juce::File& folder, te::Engine& teEngine)
+        {
+            beginTest ("Check for updates compares versions the way people read them");
+            expect (Version::compare ("1.0.1", "1.0.0") > 0);
+            expect (Version::compare ("v1.10.0", "1.9.9") > 0, "numbers, not text");
+            expect (Version::compare ("1.0.0", "v1.0.0") == 0, "a leading v is ignored");
+            expect (Version::compare ("1.0.0", "1.0.0-beta.1") > 0, "the release is newer than its beta");
+            expect (Version::compare ("1.0.0-beta.2", "1.0.0-beta.1") > 0);
+            expect (Version::compare ("1.0.0-beta.10", "1.0.0-beta.9") > 0, "beta numbers compare as numbers");
+            expect (Version::compare ("1.0", "1.0.0") == 0, "a missing .0 doesn't matter");
+            expect (Version::compare ("0.9.0", "1.0.0-beta.1") < 0);
+
+            beginTest ("A run that didn't close cleanly is noticed (so its log can be sent)");
+            {
+                const auto write = [&folder] (const juce::String& fileName, const juce::String& text)
+                {
+                    const auto f = folder.getChildFile (fileName);
+                    f.replaceWithText (text);
+                    return f;
+                };
+                const auto header = juce::String ("**********\nEzDAWsIt 1.0.0 | Windows 11 | today\n");
+                const auto clean = Diagnostics::summarise (write ("clean.txt", header + "work\n" + Diagnostics::cleanShutdownLine + "\n"), "EzDAWsIt");
+                const auto crashed = Diagnostics::summarise (write ("crash.txt", header + "work\n" + Diagnostics::crashLine + "\nstack\n"), "EzDAWsIt");
+                const auto killed = Diagnostics::summarise (write ("killed.txt", header + "work\nmore work\n"), "EzDAWsIt");
+                const auto tests = Diagnostics::summarise (write ("tests.txt", "**********\nEzDAWsIt tests 1.0.0 | Windows | today\nrunning\n"), "EzDAWsIt");
+
+                expect (clean.isAppRun && clean.endedCleanly && ! clean.crashed, "a clean run");
+                expect (crashed.isAppRun && ! crashed.endedCleanly && crashed.crashed, "a crash");
+                expect (killed.isAppRun && ! killed.endedCleanly && ! killed.crashed, "ended without a crash report (killed, power cut)");
+                expect (! tests.isAppRun, "test runs never trigger the offer");
+            }
+
+            beginTest ("Plugins are scanned in a separate process, so a bad plugin can't crash EzDAWsIt");
+            expect (AudioEngine::Behaviour().canScanPluginsOutOfProcess());
+
+            beginTest ("Every save stamps the song format; a song from a newer EzDAWsIt is refused, untouched");
+            ensureSongIsOpen (session, songFile);
+            session.setBpm (101.0);
+            expect (session.saveSong(), session.getLastError());
+            expectEquals (Session::readSongFormatVersion (teEngine, songFile), Session::songFormatVersion);
+
+            {
+                auto state = te::loadEditFromFile (teEngine, songFile, te::ProjectItemID {});
+                expect (state.hasType (te::IDs::EDIT));
+                state.setProperty (Session::formatVersionProp, Session::songFormatVersion + 1, nullptr);
+                state.setProperty (Session::savedWithProp, "EzDAWsIt 9.0.0", nullptr);
+                const auto future = folder.getChildFile ("From the future.tracktionedit");
+                expect (future.replaceWithText (state.toXmlString()));
+                const auto before = future.loadFileAsString();
+
+                expectEquals (Session::readSongFormatVersion (teEngine, future), Session::songFormatVersion + 1);
+                expect (! session.openSong (future), "refused");
+                expect (session.getLastError().contains ("newer EzDAWsIt") && session.getLastError().contains ("9.0.0"), session.getLastError());
+                expect (future.loadFileAsString() == before, "the newer song is not touched");
+                expect (session.getSongFile() == songFile, "the open song stays open");
+
+                // A song from before the stamp (no version) still opens: it's the same format
+                state.removeProperty (Session::formatVersionProp, nullptr);
+                const auto older = folder.getChildFile ("From before the stamp.tracktionedit");
+                expect (older.replaceWithText (state.toXmlString()));
+                expectEquals (Session::readSongFormatVersion (teEngine, older), 0);
+                expect (session.openSong (older), session.getLastError());
+                expect (session.closeSong());
+            }
+
+            beginTest ("A big song (48 tracks, 96 effects, 3000 notes) saves and opens in reasonable time");
+            {
+                expect (session.createSong ("Stress Test"), session.getLastError());
+                const auto file = session.getSongFile();
+
+                juce::Array<Session::PluginChoice> effects;
+
+                for (const auto& e : session.getAvailableEffects())
+                    if (e.pluginType.isNotEmpty() && e.description.fileOrIdentifier.isEmpty() && effects.size() < 2)
+                        effects.add (e);
+
+                expectEquals (effects.size(), 2, "two built-in effects to use");
+
+                while (session.getNumAudioTracks() < 48)
+                    session.addAudioTrack();
+
+                const auto& tempo = session.getEdit()->tempoSequence;
+                int notes = 0;
+
+                for (int t = 0; t < 48; ++t)
+                {
+                    for (const auto& e : effects)
+                        session.addEffect (t, e, false);
+
+                    if (session.createMidiClip (t, te::TimePosition(), tempo.toTime (te::BeatPosition::fromBeats (64.0)) - te::TimePosition(), "Part " + juce::String (t + 1)))
+                        if (auto* clip = dynamic_cast<te::MidiClip*> (session.getSelectedClip()))
+                            for (int n = 0; n < 64; ++n, ++notes)
+                                session.addMidiNote (*clip, 36 + (n * 7 + t) % 48, n, 0.5, 100);
+                }
+
+                expectEquals (session.getNumAudioTracks(), 48);
+                expectEquals (notes, 48 * 64);
+
+                const auto timeIt = [] (auto&& action)
+                {
+                    const auto start = juce::Time::getMillisecondCounterHiRes();
+                    action();
+                    return juce::Time::getMillisecondCounterHiRes() - start;
+                };
+
+                bool ok = false;
+                const auto saveMs = timeIt ([&] { ok = session.saveSong(); });
+                expect (ok, session.getLastError());
+                const auto closeMs = timeIt ([&] { ok = session.closeSong(); });
+                expect (ok, session.getLastError());
+                const auto openMs = timeIt ([&] { ok = session.openSong (file); });
+                expect (ok, session.getLastError());
+                logMessage ("Big song: save " + juce::String (saveMs, 0) + " ms, close " + juce::String (closeMs, 0) + " ms, open " + juce::String (openMs, 0) + " ms, "
+                     + juce::String (file.getSize() / 1024) + " KB");
+
+                expectEquals (session.getNumAudioTracks(), 48, "every track came back");
+                int clips = 0;
+
+                for (auto* track : te::getAudioTracks (*session.getEdit()))
+                    clips += track->getClips().size();
+
+                expectEquals (clips, 48, "every clip came back");
+                expect (saveMs < 15000.0 && openMs < 20000.0 && closeMs < 15000.0,
+                        "save " + juce::String (saveMs, 0) + " ms, open " + juce::String (openMs, 0) + " ms");
+
+                expect (session.closeSong());
+            }
+
+            ensureSongIsOpen (session, songFile);
+        }
+
         /** Each test block starts from the song being open, so one failure can't cascade into the next. */
         void ensureSongIsOpen (Session& session, const juce::File& songFile)
         {

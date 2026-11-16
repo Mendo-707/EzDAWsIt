@@ -21,6 +21,10 @@ namespace ez
         {
             static constexpr int maxPluginsOnTrack = 40;
 
+            /** Plugins are scanned in a separate copy of EzDAWsIt: a plugin that crashes while being
+                scanned takes down only that copy, and is put on the failed list instead. */
+            bool canScanPluginsOutOfProcess() override         { return true; }
+
             te::EditLimits getEditLimits() override
             {
                 te::EditLimits limits;

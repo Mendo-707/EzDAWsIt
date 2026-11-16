@@ -39,7 +39,9 @@ namespace ez
 
         auto& pm = engine.getPluginManager();
         pluginsPage = std::make_unique<juce::PluginListComponent> (pm.pluginFormatManager, pm.knownPluginList,
-                                                                  engine.getTemporaryFileManager().getTempFile ("PluginScanDeadMansPedal"),
+                                                                  // Beside the settings, not in the temp folder (which is emptied): a plugin
+                                                                  // that crashed a scan must stay known across restarts
+                                                                  engine.getPropertyStorage().getAppPrefsFolder().getChildFile ("PluginScanDeadMansPedal"),
                                                                   std::addressof (engine.getPropertyStorage().getPropertiesFile()),
                                                                   true);
 

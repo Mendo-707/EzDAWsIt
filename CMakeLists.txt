@@ -41,6 +41,7 @@ set(EZ_SOURCES
     # Core: no audio, no UI
     Source/Core/Common.h
     Source/Core/AppPaths.h          Source/Core/AppPaths.cpp
+    Source/Core/Version.h
     Source/Core/Diagnostics.h       Source/Core/Diagnostics.cpp
     # Engine: audio + song model, no UI
     Source/Engine/AudioEngine.h     Source/Engine/AudioEngine.cpp

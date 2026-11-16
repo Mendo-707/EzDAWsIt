@@ -112,8 +112,6 @@ namespace ez::CommandIDs
         toggleProView,
         showShortcuts,
         startTour,
-        showAbout,
-        openLogFolder,
 
         // Audio clips and tempo
         tapTempo,
@@ -138,6 +136,11 @@ namespace ez::CommandIDs
 
         // Songs
         saveSongAs,
-        songMenu
+        songMenu,
+
+        // Help
+        showAbout,
+        openLogFolder,
+        checkForUpdates
     };
 }

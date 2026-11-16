@@ -4,6 +4,7 @@
 
 #include "InterfaceScale.h"
 #include "MainComponent.h"
+#include "../Core/Version.h"
 #include "TunerView.h"
 #include "HelpViews.h"
 #include "UiMode.h"
@@ -215,7 +216,7 @@ namespace ez
                              deleteSelection, toggleLoop, toggleSnap, zoomIn, zoomOut,
                              copy, cut, paste, duplicate, selectAll, splitClips, deselectAll,
                              nudgeLeft, nudgeRight, goToEnd, toggleBrowser, toggleDetailPanel, toggleClipEditor, resetMeters,
-                             showArrangeView, showMixView, toggleMixView, showMasterView, toggleMasterChain, toggleReference, showTuner, togglePunch, punchInHere, punchOutHere, nextTake, previousTake, midiLearn, toggleMidiClock, toggleProView, showShortcuts, startTour, showAbout, openLogFolder,
+                             showArrangeView, showMixView, toggleMixView, showMasterView, toggleMasterChain, toggleReference, showTuner, togglePunch, punchInHere, punchOutHere, nextTake, previousTake, midiLearn, toggleMidiClock, toggleProView, showShortcuts, startTour, showAbout, openLogFolder, checkForUpdates,
                              tapTempo, fadeClips, normaliseClips, reverseClips, followTempoClips, transposeClipsUp, transposeClipsDown, zoomToFit, loopSelection,
                              renameTrack, duplicateTrack, deleteTrack, moveTrackUp, moveTrackDown, previousTrack, nextTrack, toggleFollow, saveSongAs, songMenu, addBus, addFxReturn, routeToNewBus, toggleSends,
                              toggleAutomationLanes, toggleAutomationWrite, toggleAutomationRead,
@@ -546,6 +547,11 @@ namespace ez
             case CommandIDs::openLogFolder:
                 info.setInfo ("Open the log folder", "The logs to send with a bug report, in Explorer (Ctrl+Alt+F1)", "Help", 0);
                 info.addDefaultKeypress (juce::KeyPress::F1Key, cmd | ModifierKeys::altModifier);
+                break;
+
+            case CommandIDs::checkForUpdates:
+                info.setInfo ("Check for updates", "Asks GitHub whether a newer EzDAWsIt is out (Ctrl+Shift+F1). Nothing else is sent.", "Help", 0);
+                info.addDefaultKeypress (juce::KeyPress::F1Key, cmd | ModifierKeys::shiftModifier);
                 break;
 
             case CommandIDs::midiLearn:
@@ -1212,6 +1218,10 @@ namespace ez
                 showAboutBox();
                 return true;
 
+            case CommandIDs::checkForUpdates:
+                checkForUpdatesNow();
+                return true;
+
             case CommandIDs::openLogFolder:
                 AppPaths::createFolders();
                 if (! AppPaths::getLogsFolder().startAsProcess())
@@ -1412,6 +1422,33 @@ namespace ez
     }
 
     //==============================================================================
+    void MainComponent::offerPreviousRunLog (const juce::File& log, bool crashed)
+    {
+        // After the start-up song (and any restore question) has had its turn
+        juce::Timer::callAfterDelay (2500, [safe = juce::Component::SafePointer<MainComponent> (this), log, crashed]
+        {
+            if (safe == nullptr)
+                return;
+
+            const auto options = juce::MessageBoxOptions()
+                                     .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                     .withTitle (crashed ? "EzDAWsIt crashed last time" : "EzDAWsIt didn't close properly last time")
+                                     .withMessage (juce::String (crashed ? "Sorry about that. " : "")
+                                                   + "Your songs autosave, so little or nothing should be lost.\n\n"
+                                                     "To help get it fixed, send the log from that session with a note of what you were doing "
+                                                     "(Help > Open the log folder finds it later too).")
+                                     .withButton ("Show the log", 1)
+                                     .withButton ("Not now", 0)
+                                     .withAssociatedComponent (safe.getComponent());
+
+            safe->previousRunBox = juce::AlertWindow::showScopedAsync (options, [log] (int result)
+            {
+                if (result == 1)
+                    log.revealToUser();
+            });
+        });
+    }
+
     void MainComponent::openSongFromSystem (const juce::File& file)
     {
         if (! file.existsAsFile())
@@ -1700,6 +1737,96 @@ namespace ez
 
         tunerWindow->setVisible (true);
         tunerWindow->toFront (true);
+    }
+
+    void MainComponent::checkForUpdatesNow()
+    {
+        if (updateCheckRunning.exchange (true))
+            return;
+
+        session.showHint ("Checking for updates...");
+        const auto current = juce::JUCEApplication::getInstance()->getApplicationVersion();
+
+        // Off the message thread: the network can be slow. Only GitHub's public release list is fetched.
+        juce::Thread::launch ([safe = juce::Component::SafePointer<MainComponent> (this), current]
+        {
+            juce::String latestTag, pageUrl, problem;
+            const juce::URL url ("https://api.github.com/repos/Mendo-707/ezdawsit/releases?per_page=5");
+            int status = 0;
+
+            if (auto stream = url.createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                                                         .withConnectionTimeoutMs (8000)
+                                                         .withStatusCode (&status)
+                                                         .withExtraHeaders ("User-Agent: EzDAWsIt\r\nAccept: application/vnd.github+json")))
+            {
+                const auto json = juce::JSON::parse (stream->readEntireStreamAsString());
+
+                if (status == 200 && json.isArray())
+                {
+                    // The newest release that isn't a draft (betas count: testers want them)
+                    for (const auto& release : *json.getArray())
+                        if (! (bool) release["draft"] && (latestTag.isEmpty() || Version::compare (release["tag_name"].toString(), latestTag) > 0))
+                        {
+                            latestTag = release["tag_name"].toString();
+                            pageUrl = release["html_url"].toString();
+                        }
+
+                    if (latestTag.isEmpty())
+                        problem = "No releases are published yet.";
+                }
+                else
+                {
+                    problem = "GitHub answered with an error (" + juce::String (status) + "). Try again later.";
+                }
+            }
+            else
+            {
+                problem = "Couldn't reach GitHub. Check the internet connection and try again.";
+            }
+
+            juce::MessageManager::callAsync ([safe, current, latestTag, pageUrl, problem]
+            {
+                if (safe == nullptr)
+                    return;
+
+                safe->updateCheckRunning = false;
+                log ("Update check: current " + current + ", latest " + (latestTag.isNotEmpty() ? latestTag : "-") + " " + problem);
+
+                if (problem.isNotEmpty())
+                {
+                    safe->showError ("Check for updates", problem);
+                    return;
+                }
+
+                if (Version::compare (latestTag, current) <= 0)
+                {
+                    safe->session.showHint ("You have the latest EzDAWsIt (" + current + ")");
+                    safe->questionBox = juce::AlertWindow::showScopedAsync (juce::MessageBoxOptions()
+                                                                                .withIconType (juce::MessageBoxIconType::InfoIcon)
+                                                                                .withTitle ("Check for updates")
+                                                                                .withMessage ("You have the latest version: EzDAWsIt " + current + ".")
+                                                                                .withButton ("OK", 0)
+                                                                                .withAssociatedComponent (safe.getComponent()),
+                                                                            nullptr);
+                    return;
+                }
+
+                const auto options = juce::MessageBoxOptions()
+                                         .withIconType (juce::MessageBoxIconType::InfoIcon)
+                                         .withTitle ("An update is available")
+                                         .withMessage ("EzDAWsIt " + latestTag.trimCharactersAtStart ("vV") + " is out (you have " + current + ").\n\n"
+                                                       "Download the installer and run it: it updates EzDAWsIt in place and keeps your songs and settings.")
+                                         .withButton ("Open the download page", 1)
+                                         .withButton ("Later", 0)
+                                         .withAssociatedComponent (safe.getComponent());
+
+                safe->questionBox = juce::AlertWindow::showScopedAsync (options, [pageUrl] (int result)
+                {
+                    if (result == 1)
+                        juce::URL (pageUrl).launchInDefaultBrowser();
+                });
+            });
+        });
     }
 
     void MainComponent::showAboutBox()
