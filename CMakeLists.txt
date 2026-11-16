@@ -57,6 +57,7 @@ set(EZ_SOURCES
     Source/Engine/SessionPresets.cpp
     Source/Engine/Dsp.h
     Source/Engine/Effects.h         Source/Engine/Effects.cpp
+    Source/Engine/PluginPresets.h   Source/Engine/PluginPresets.cpp
     Source/Engine/VocalChain.h      Source/Engine/VocalChain.cpp
     Source/Engine/Mastering.h Source/Engine/Mastering.cpp
     Source/Engine/DrumKits.h        Source/Engine/DrumKits.cpp
@@ -89,6 +90,8 @@ set(EZ_SOURCES
     Source/UI/Shell/StatusBar.h     Source/UI/Shell/StatusBar.cpp
     Source/UI/MainComponent.h       Source/UI/MainComponent.cpp
     Source/UI/ParamEditor.h         Source/UI/ParamEditor.cpp
+    Source/UI/PluginLayouts.h     Source/UI/PluginLayouts.cpp
+    Source/UI/PluginDisplays.h    Source/UI/PluginDisplays.cpp
     Source/UI/InterfaceScale.h      Source/UI/InterfaceScale.cpp
     Source/UI/ExportView.h          Source/UI/ExportView.cpp
     Source/UI/MasterView.h          Source/UI/MasterView.cpp

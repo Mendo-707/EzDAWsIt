@@ -65,6 +65,13 @@ namespace ez::Theme
     inline const juce::Colour chipFill     { 0xff22262f };
     inline const juce::Colour chipBorder   { 0xff4a5160 };
     inline const juce::Colour chipText     { 0xffd3d8e0 };
+
+    // Plug-in displays: EQ band handles (one colour per band) and the Tune keyboard
+    inline const juce::Colour bandColours[] { juce::Colour (0xfff5b544), juce::Colour (0xff3dd68c), juce::Colour (0xff4d9fff), juce::Colour (0xffb58cff) };
+    inline const juce::Colour keyWhite     { 0xffd8dde6 };   // a white key in the scale
+    inline const juce::Colour keyWhiteOff  { 0xff4a505c };   // a white key outside the scale
+    inline const juce::Colour keyBlack     { 0xff3a404c };   // a black key in the scale
+    inline const juce::Colour keyBlackOff  { 0xff0c0e12 };   // a black key outside the scale
     constexpr float plannedAlpha = 0.5f;
 
     //==============================================================================

@@ -247,3 +247,10 @@ Format: **Symptom** -> cause -> fix. Add the short version to the Pitfalls list 
 - Time-stretch (clip transpose, auto tempo) needs a stretcher compiled in (SoundTouch here) and the clip's mode set
   off `disabled` (`TimeStretcher::defaultMode`).
 - Sidechain: `CompressorPlugin::useSidechainTrigger` + `Plugin::setSidechainSourceID` + `guessSidechainRouting()`.
+- Plug-in windows: many Tracktion settings are plain ValueTree properties, not parameters (4OSC waveShapeN, voiceMode,
+  filterType, the fx On flags; Delay `length`; Chorus/Phaser values). List them as layout `settings`.
+- After `UndoManager::undo()` a parameter attached to a CachedValue updates on the next message loop turn: tests check
+  `plugin.state`, not `getCurrentValue()`.
+- `FourOscPlugin::flushPluginStateToValueTree()` is private: call it through `te::Plugin&`.
+- `juce::String (double, 0)` means "full precision", not "no decimals": round to int instead.
+- Tracktion's Delay grows its buffer inside applyToBuffer when the time gets longer (allocates on the audio thread).

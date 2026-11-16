@@ -9,6 +9,7 @@
 #include "../UI/CommandIDs.h"
 #include "../UI/Dialogs.h"
 #include "../UI/MainComponent.h"
+#include "../UI/ParamEditor.h"
 
 namespace ez::Screenshots
 {
@@ -147,6 +148,90 @@ namespace ez::Screenshots
             return out != nullptr && png.writeImageToStream (image, *out);
         }
 
+        /** Every built-in effect and the synth, in their editors: one PNG each, plus a list of their
+            parameters (what a layout can refer to) in plugins.txt. */
+        int savePluginEditors (Session& session, const juce::File& folder)
+        {
+            int problems = 0;
+            juce::String list;
+
+            const auto render = [&] (te::Plugin& plugin, const juce::String& name)
+            {
+                list << "== " << name << " (" << plugin.getPluginType() << ")\n";
+
+                for (auto* p : plugin.getAutomatableParameters())
+                    list << "  " << p->paramID << " | " << p->getParameterName() << " | " << p->valueRange.start << ".." << p->valueRange.end
+                         << " step " << p->valueRange.interval << " | now " << p->getCurrentValueAsString() << "\n";
+
+                auto content = ParamEditor::createContent (plugin);
+                content->setVisible (true);
+                juce::Component holder;
+                holder.setSize (content->getWidth(), content->getHeight());
+                holder.addAndMakeVisible (*content);
+                holder.addToDesktop (0);
+                holder.setVisible (true);
+                pump (300);
+                const auto fileName = "plugin-" + juce::File::createLegalFileName (name).replaceCharacter (' ', '-').toLowerCase() + ".png";
+                problems += save (holder, folder.getChildFile (fileName)) ? 0 : 1;
+
+                // plug-ins with pages (the synth): every other page too
+                juce::Array<juce::TextButton*> tabs;
+                std::function<void (juce::Component&)> findTabs = [&] (juce::Component& c)
+                {
+                    for (auto* child : c.getChildren())
+                    {
+                        if (auto* b = dynamic_cast<juce::TextButton*> (child); b != nullptr && b->getTooltip().startsWith ("Show ")
+                                                                                 && b->getTooltip().contains ("(Ctrl+"))
+                            tabs.add (b);
+
+                        findTabs (*child);
+                    }
+                };
+                findTabs (*content);
+
+                for (int i = 1; i < tabs.size(); ++i)
+                {
+                    tabs[i]->triggerClick();
+                    pump (300);
+                    holder.setSize (content->getWidth(), content->getHeight());
+                    problems += save (holder, folder.getChildFile (fileName.replace (".png", "-" + juce::String (i + 1) + ".png"))) ? 0 : 1;
+                }
+
+                holder.removeFromDesktop();
+                holder.removeChildComponent (content.get());
+            };
+
+            const auto track = session.getNumAudioTracks();
+            session.addAudioTrack();
+
+            for (const auto& choice : session.getAvailableEffects())
+            {
+                if (choice.pluginType == te::ExternalPlugin::xmlTypeName || choice.name == "Vocal Chain" || choice.name == "Tuner")
+                    continue;   // these have editors of their own
+
+                if (! session.addEffect (track, choice, false))
+                {
+                    ++problems;
+                    continue;
+                }
+
+                if (auto* audioTrack = te::getAudioTracks (*session.getEdit())[track])
+                    for (auto* plugin : audioTrack->pluginList.getPlugins())
+                        if (plugin->getPluginType() == choice.pluginType)
+                            render (*plugin, choice.name);
+            }
+
+            for (const auto& choice : session.getAvailableInstruments())
+                if (choice.name.startsWith ("Synth") && session.addInstrumentTrack (choice, false))
+                    if (auto* audioTrack = te::getAudioTracks (*session.getEdit()).getLast())
+                        for (auto* plugin : audioTrack->pluginList.getPlugins())
+                            if (plugin->getPluginType() == choice.pluginType)
+                                render (*plugin, choice.name);
+
+            folder.getChildFile ("plugins.txt").replaceWithText (list);
+            return problems;
+        }
+
         /** Dialog windows open as separate desktop windows: save each one. */
         int saveDialogs (juce::Component& main, const juce::File& folder, const juce::String& prefix)
         {
@@ -265,6 +350,8 @@ namespace ez::Screenshots
                 Dialogs::closeAll();
                 pump (200);
             }
+
+            problems += savePluginEditors (session, folder);
 
             session.closeSong();
             window.clearContentComponent();

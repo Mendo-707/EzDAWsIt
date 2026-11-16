@@ -213,3 +213,18 @@ Selected = lit tint, inner glow and a 1.5 px selection edge.
 
 **Checking the look:** `EzDAWsIt.exe --screenshots <folder>` renders every view of a demo song at 1280x760 and
 900x500, plus a menu and a message box. Use it after any visual change.
+
+## Plug-in windows
+
+Every built-in plug-in opens a designed window (UI/ParamEditor + UI/PluginLayouts), not a wall of knobs:
+- Header: power (bypass), name and a one-line description, page tabs (Ctrl+1..4), presets menu
+  (built in / yours / save as / delete / open folder), A/B compare (right-click copies), Reset.
+- Cards with a live display on top: EQ curve with draggable bands (wheel = Q, double-click = 0 dB), compressor/gate/limiter
+  transfer curves, filter responses, ADSR envelopes you can drag, oscillator and LFO waves, delay taps, reverb tail,
+  Tune keyboard showing the scale, stereo picture.
+- Knobs: drag, Shift-drag fine, double-click resets, wheel steps, double-click the value to type it (units like "2k", "1.5 s"),
+  right-click for reset / type a value. Values are tidied ("0 dB", "C", "17 kHz").
+- Planned (not built yet): "Show automation" and "MIDI learn" in a knob's right-click menu, preset browser search,
+  and a live input/output meter in the dynamics displays.
+- 4OSC: four pages (Oscillators, Filter & Amp, Modulation with a routing matrix, Effects with per-effect power).
+- Delay: sync-to-tempo note buttons. Unknown plug-ins fall back to a tidy grid of every parameter.

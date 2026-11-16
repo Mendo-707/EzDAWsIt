@@ -19,6 +19,9 @@
 #include "../Engine/MidiLearn.h"
 #include "../Core/Version.h"
 #include "../Core/Diagnostics.h"
+#include "../Engine/PluginPresets.h"
+#include "../UI/PluginLayouts.h"
+#include "../UI/PluginDisplays.h"
 
 namespace ez::Tests
 {
@@ -274,6 +277,7 @@ namespace ez::Tests
             runAudioEditTests (session, songFile, testFolder.folder);
             runExportTests (session, testFolder.folder);
             runReleaseTests (session, songFile, testFolder.folder, engine->getEngine());
+            runPluginEditorTests (session, songFile);
 
             session.closeSong();
             removeTestMidiInput (engine->getEngine().getDeviceManager());
@@ -282,6 +286,177 @@ namespace ez::Tests
     private:
         /** What a public release needs beyond the features: updates, crash reports, file safety
             across versions, plugin safety, and a big song that still saves and loads quickly. */
+        void runPluginEditorTests (Session& session, const juce::File& songFile)
+        {
+            expect (session.openSong (songFile), session.getLastError());
+
+            beginTest ("Knob values read cleanly: no '0.000dB', centre pan is C, big numbers in kHz and s");
+            expectEquals (PluginLayouts::tidyValueText ("0.000dB"), juce::String ("0 dB"));
+            expectEquals (PluginLayouts::tidyValueText ("-6.000 dB"), juce::String ("-6 dB"));
+            expectEquals (PluginLayouts::tidyValueText ("+1.50 dB"), juce::String ("+1.5 dB"));
+            expectEquals (PluginLayouts::tidyValueText ("0R"), juce::String ("C"));
+            expectEquals (PluginLayouts::tidyValueText ("34L"), juce::String ("34L"));
+            expectEquals (PluginLayouts::tidyValueText ("17000 Hz"), juce::String ("17 kHz"));
+            expectEquals (PluginLayouts::tidyValueText ("1500 ms"), juce::String ("1.5 s"));
+            expectEquals (PluginLayouts::tidyValueText ("123.456 %"), juce::String ("123 %"));
+            expectEquals (PluginLayouts::tidyValueText ("Sine"), juce::String ("Sine"));
+
+            beginTest ("The response curves the editors draw are the real filter shapes");
+            expectWithinAbsoluteError (PluginDisplays::Response::peak (1000.0f, 1000.0f, 6.0f, 1.0f), 6.0f, 0.1f);
+            expectWithinAbsoluteError (PluginDisplays::Response::peak (50.0f, 1000.0f, 6.0f, 1.0f), 0.0f, 0.3f);
+            expectWithinAbsoluteError (PluginDisplays::Response::lowPass (1000.0f, 1000.0f, 0.7071f), -3.0f, 0.2f);
+            expect (PluginDisplays::Response::lowPass (8000.0f, 1000.0f, 0.7071f) < -30.0f, "a low-pass cuts the highs");
+            expect (PluginDisplays::Response::highPass (100.0f, 1000.0f, 0.7071f) < -30.0f, "a high-pass cuts the lows");
+            expectWithinAbsoluteError (PluginDisplays::Response::lowShelf (20.0f, 200.0f, -9.0f, 0.7071f), -9.0f, 0.5f);
+            expectWithinAbsoluteError (PluginDisplays::Response::highShelf (15000.0f, 2000.0f, 4.0f, 0.7071f), 4.0f, 0.5f);
+
+            // Every built-in plug-in, effects and the synth, on a fresh track
+            const auto track = session.getNumAudioTracks();
+            session.addAudioTrack();
+            std::vector<te::Plugin::Ptr> plugins;
+
+            for (const auto& choice : session.getAvailableEffects())
+                if (choice.pluginType != te::ExternalPlugin::xmlTypeName && session.addEffect (track, choice, false))
+                    if (auto* audioTrack = te::getAudioTracks (*session.getEdit())[track])
+                        for (auto* p : audioTrack->pluginList.getPlugins())
+                            if (p->getPluginType() == choice.pluginType)
+                                plugins.push_back (p);
+
+            const auto instruments = session.getAvailableInstruments();
+            expect (! instruments.isEmpty() && session.addInstrumentTrack (instruments[0], false), session.getLastError());
+
+            if (auto* synthTrack = te::getAudioTracks (*session.getEdit()).getLast())
+                for (auto* p : synthTrack->pluginList.getPlugins())
+                    if (dynamic_cast<te::FourOscPlugin*> (p) != nullptr)
+                        plugins.push_back (p);
+
+            beginTest ("Every control, display and factory preset in a plug-in window points at something real");
+            {
+                int laidOut = 0;
+
+                for (auto& plugin : plugins)
+                {
+                    const auto layout = PluginLayouts::forPlugin (*plugin);
+
+                    if (! layout.has_value())
+                        continue;   // the editor shows every parameter instead
+
+                    ++laidOut;
+                    const auto settings = PluginLayouts::settingIds (*layout);
+                    const auto resolves = [&] (const juce::String& id)
+                    {
+                        return plugin->getAutomatableParameterByID (id) != nullptr || settings.contains (id);
+                    };
+
+                    for (const auto& page : layout->pages)
+                        for (const auto& row : page.rows)
+                            for (const auto& section : row)
+                            {
+                                for (const auto& item : section.items)
+                                    expect (resolves (item.id), plugin->getName() + ": control " + item.id);
+
+                                for (const auto& id : section.displayIds)
+                                    expect (resolves (id), plugin->getName() + ": display " + id);
+
+                                if (section.powerId.isNotEmpty())
+                                    expect (resolves (section.powerId), plugin->getName() + ": power " + section.powerId);
+                            }
+
+                    for (const auto& preset : PluginPresets::getFactory (plugin->getPluginType()))
+                        for (const auto& value : preset.values)
+                            expect (resolves (value.id), plugin->getName() + " preset " + preset.name + ": " + value.id);
+                }
+
+                expect (laidOut >= 10, "the built-in plug-ins have designed windows, not a wall of knobs");
+                expect (! PluginPresets::getFactory (te::FourOscPlugin::xmlTypeName).empty(), "the synth comes with sounds");
+            }
+
+            te::FourOscPlugin* synth = nullptr;
+            for (auto& p : plugins)
+                if (auto* s = dynamic_cast<te::FourOscPlugin*> (p.get()))
+                    synth = s;
+
+            expect (synth != nullptr);
+
+            if (synth != nullptr)
+            {
+                const auto layout = PluginLayouts::forPlugin (*synth);
+                expect (layout.has_value());
+                const auto settings = layout.has_value() ? PluginLayouts::settingIds (*layout) : juce::StringArray();
+                auto level = synth->getAutomatableParameterByID ("level1");
+                expect (level != nullptr && settings.contains ("waveShape1"), "the synth's level and waveform are in its presets");
+
+                if (level != nullptr)
+                {
+                    const auto readWave = [&] { return (int) synth->state.getProperty ("waveShape1", -1); };
+
+                    beginTest ("A preset brings back the exact sound, including settings that aren't parameters");
+                    synth->edit.getUndoManager().beginNewTransaction();
+                    level->setParameter (-12.0f, juce::sendNotificationSync);
+                    synth->state.setProperty ("waveShape1", 3, &synth->edit.getUndoManager());
+                    const auto saved = PluginPresets::capture (*synth, settings);
+
+                    synth->edit.getUndoManager().beginNewTransaction();
+                    PluginPresets::resetToDefaults (*synth, settings);
+                    expectWithinAbsoluteError (level->getCurrentValue(), level->getDefaultValue().value_or (0.0f), 0.01f);
+                    expect (readWave() != 3, "reset puts the waveform back");
+
+                    synth->edit.getUndoManager().beginNewTransaction();
+                    PluginPresets::apply (*synth, saved, settings, true);
+                    expectWithinAbsoluteError (level->getCurrentValue(), -12.0f, 0.01f);
+                    expectEquals (readWave(), 3);
+
+                    beginTest ("Loading a preset is one undo step: one Undo gets the previous sound back");
+                    synth->edit.getUndoManager().beginNewTransaction();
+                    PluginPresets::resetToDefaults (*synth, settings);
+                    synth->edit.getUndoManager().beginNewTransaction();
+                    PluginPresets::apply (*synth, saved, settings, true);
+                    synth->edit.getUndoManager().undo();
+                    // the song's state is what undo restores (the knob catches up on the next message loop turn)
+                    expectWithinAbsoluteError ((float) synth->state.getProperty ("level1", 0.0f), level->getDefaultValue().value_or (0.0f), 0.01f);
+                    expect (readWave() != 3);
+                    synth->edit.getUndoManager().redo();
+                    expectEquals (readWave(), 3);
+
+                    beginTest ("Your own presets save to your presets folder, load back by name, and delete to the bin");
+                    juce::String error;
+                    const auto presetName = "Test sound " + juce::String (juce::Random::getSystemRandom().nextInt (100000));
+                    expect (PluginPresets::saveUser (*synth, presetName, settings, error), error);
+                    expect (PluginPresets::getUserFolder (synth->getPluginType()).isAChildOf (AppPaths::getRootFolder()),
+                            "presets live under the app's folder (the test folder here)");
+
+                    const auto user = PluginPresets::getUser (synth->getPluginType());
+                    const auto found = std::find_if (user.begin(), user.end(), [&] (const auto& p) { return p.name == presetName; });
+                    expect (found != user.end());
+
+                    if (found != user.end())
+                    {
+                        PluginPresets::resetToDefaults (*synth, settings);
+                        PluginPresets::apply (*synth, found->values, settings, true);
+                        expectWithinAbsoluteError (level->getCurrentValue(), -12.0f, 0.01f);
+                        expectEquals (readWave(), 3);
+
+                        expect (PluginPresets::deleteUser (*found));
+                        const auto after = PluginPresets::getUser (synth->getPluginType());
+                        expect (std::none_of (after.begin(), after.end(), [&] (const auto& p) { return p.name == presetName; }));
+                    }
+
+                    beginTest ("A preset with a bad name is refused with a reason, and nothing is written");
+                    const auto before = PluginPresets::getUser (synth->getPluginType()).size();
+                    expect (! PluginPresets::saveUser (*synth, "   ", settings, error));
+                    expect (error.isNotEmpty());
+                    expectEquals (PluginPresets::getUser (synth->getPluginType()).size(), before);
+
+                    beginTest ("The preset name shown in the window is kept with the plug-in");
+                    PluginPresets::setCurrentName (*synth, "Warm pad");
+                    expectEquals (PluginPresets::getCurrentName (*synth), juce::String ("Warm pad"));
+                }
+            }
+
+            plugins.clear();
+            session.closeSong();
+        }
+
         void runReleaseTests (Session& session, const juce::File& songFile, const juce::File& folder, te::Engine& teEngine)
         {
             beginTest ("Check for updates compares versions the way people read them");
