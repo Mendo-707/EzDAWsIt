@@ -92,6 +92,7 @@ Main.cpp start-up/shut-down order: Diagnostics -> LookAndFeel -> AudioEngine -> 
 - Tests run inside `initialise()` with no message loop: anything Tracktion does via `callAsync` hasn't happened yet. Each test block must set up its own state.
 - Tracktion loads an empty file as a valid blank song: always check `file.getSize() > 0` before trusting a song/autosave.
 - Offline renders in tests need the test engine's `TestUIBehaviour` (the default UIBehaviour silently skips the render). `measureStatistics` stops every transport on the engine: tests only.
+- The app's `EzUIBehaviour` must run `runTaskWithProgressBar` too: without it, Freeze worked in every test and rendered nothing in the app. Test app-side behaviour through `createUIBehaviour()`, not the test engine's.
 - Tests must pass on every run, not just the first: set up all state yourselves and clean up after (test settings persist in %APPDATA%\\EzDAWsIt-Tests).
 - UI-only state (view flags, zoom) is set with a null UndoManager, never the Edit's.
 - Any window holding engine references must be closed before `AudioEngine` is destroyed (`Dialogs::closeAll()`).

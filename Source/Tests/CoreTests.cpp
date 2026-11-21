@@ -25,6 +25,7 @@
 #include "../UI/PluginDisplays.h"
 #include "../UI/PluginLook.h"
 #include "../UI/ParamEditor.h"
+#include "../UI/PluginWindows.h"
 
 namespace ez::Tests
 {
@@ -546,6 +547,26 @@ namespace ez::Tests
                     bank.analyseSamples (nullptr, 0, 48000.0, 1.0f);   // a second of nothing
                     expectWithinAbsoluteError (bank.getSpectrum()[(size_t) loudest], peak - 20.0f, 0.5f);
                 }
+            }
+
+            beginTest ("The app's UIBehaviour runs Tracktion's offline jobs to the end (without it, freezing rendered nothing)");
+            {
+                struct CountingJob : public te::ThreadPoolJobWithProgress
+                {
+                    CountingJob() : te::ThreadPoolJobWithProgress ("Counting") {}
+                    float getCurrentTaskProgress() override { return (float) steps.load() / 20.0f; }
+
+                    JobStatus runJob() override
+                    {
+                        return ++steps >= 20 ? jobHasFinished : jobNeedsRunningAgain;
+                    }
+
+                    std::atomic<int> steps { 0 };
+                };
+
+                CountingJob job;
+                createUIBehaviour()->runTaskWithProgressBar (job);
+                expectEquals (job.steps.load(), 20, "every step ran before it returned");
             }
 
             beginTest ("Freeze renders a track to audio and unfreezing gives it back; empty tracks and buses are refused");
@@ -3157,6 +3178,13 @@ namespace ez::Tests
                     expectWithinAbsoluteError (beat->getLengthInBeats().inBeats(), 16.0, 0.001, "four bars");
                     expect (! session.getEdit()->getUndoManager().canUndo(), "the template is the song's starting point: nothing to undo");
                 }
+
+                // The starter beat is real content: freezing the drums must work (it once said "nothing to freeze").
+                const auto effectsBefore = session.getEffectNames (0);
+                expect (session.setTrackFrozen (0, true), session.getLastError());
+                expect (session.isTrackFrozen (0));
+                expect (session.getEffectNames (0) == effectsBefore, "the freeze point isn't one of the user's effects (it showed as FX 3)");
+                expect (session.setTrackFrozen (0, false), session.getLastError());
             }
 
             beginTest ("Presets: every built-in template opens, with all its tracks and effects");

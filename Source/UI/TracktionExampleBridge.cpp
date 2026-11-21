@@ -33,6 +33,42 @@ namespace ez
 
                 return ExtendedUIBehaviour::createPluginWindow (pws);
             }
+
+            /** Tracktion's offline jobs (freezing a track) run through here. The default does nothing,
+                so freezing silently rendered nothing ("has nothing to freeze"). Runs the job on its own
+                thread behind a progress window, which keeps the song from being edited mid-render. */
+            void runTaskWithProgressBar (te::ThreadPoolJobWithProgress& task) override
+            {
+                struct Progress : public juce::ThreadWithProgressWindow
+                {
+                    explicit Progress (te::ThreadPoolJobWithProgress& t)
+                        : juce::ThreadWithProgressWindow (t.getJobName(), true, false, 30000), job (t) {}
+
+                    void run() override
+                    {
+                        while (! threadShouldExit())
+                        {
+                            if (job.runJob() == juce::ThreadPoolJob::jobHasFinished)
+                                break;
+
+                            setProgress (job.getCurrentTaskProgress());
+                        }
+                    }
+
+                    te::ThreadPoolJobWithProgress& job;
+                };
+
+                // The progress window takes keyboard focus: hand it back, or every shortcut is dead afterwards
+                juce::Component::SafePointer<juce::Component> previous (juce::TopLevelWindow::getActiveTopLevelWindow());
+
+                {
+                    Progress progress (task);
+                    progress.runThread();
+                }
+
+                if (previous != nullptr && previous->isShowing())
+                    previous->toFront (true);
+            }
         };
     }
 

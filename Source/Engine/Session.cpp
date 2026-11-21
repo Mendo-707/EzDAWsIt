@@ -1979,6 +1979,7 @@ namespace ez
                      && dynamic_cast<te::LevelMeterPlugin*> (plugin) == nullptr
                      && dynamic_cast<te::AuxSendPlugin*> (plugin) == nullptr     // sends and returns have their own controls
                      && dynamic_cast<te::AuxReturnPlugin*> (plugin) == nullptr
+                     && dynamic_cast<te::FreezePointPlugin*> (plugin) == nullptr   // Tracktion's marker while frozen, not an effect
                      && ! plugin->isSynth())
                     effects.add (plugin);
 

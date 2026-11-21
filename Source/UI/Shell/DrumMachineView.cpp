@@ -81,7 +81,8 @@ namespace ez
             inner.removeFromTop (roomy ? 2 : 0);
             g.setColour (s.muted ? Theme::textDim : Theme::text);
             g.setFont (nameFont);
-            g.drawText (s.name, inner.removeFromTop (juce::jmin (inner.getHeight(), (int) std::ceil (nameFont.getHeight()) + 2)), juce::Justification::centredLeft, true);
+            g.drawFittedText (s.name, inner.removeFromTop (juce::jmin (inner.getHeight(), (int) std::ceil (nameFont.getHeight()) + 2)),
+                              juce::Justification::centredLeft, 1, 0.7f);   // shrink a little before "Closed..."
 
             if (inner.getHeight() >= 12)
             {

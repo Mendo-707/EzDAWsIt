@@ -259,10 +259,43 @@ namespace ez
                 if (session.isTrackFrozen (t))
                 {
                     const juce::Rectangle<int> lane (0, view.topOfTrack (t), getWidth(), view.rowHeight (t) - 1);
-                    g.setColour (Theme::frozen.withAlpha (0.10f));
-                    g.fillRect (lane);
-                    g.setColour (Theme::frozen.withAlpha (0.5f));
-                    g.drawHorizontalLine (lane.getY(), 0.0f, (float) getWidth());
+                    const auto visible = lane.getIntersection (g.getClipBounds());
+
+                    if (visible.isEmpty())
+                        continue;
+
+                    g.setColour (Theme::frozen.withAlpha (0.16f));
+                    g.fillRect (visible);
+
+                    {   // frost: fine diagonal lines, so it reads as "locked" even in a grey-scale glance
+                        juce::Graphics::ScopedSaveState save (g);
+                        g.reduceClipRegion (visible);
+                        g.setColour (Theme::frozen.withAlpha (0.10f));
+
+                        for (int x = visible.getX() - visible.getHeight() - (visible.getX() % 12); x < visible.getRight(); x += 12)
+                            g.drawLine ((float) x, (float) visible.getBottom(), (float) (x + visible.getHeight()), (float) visible.getY());
+                    }
+
+                    g.setColour (Theme::frozen.withAlpha (0.6f));
+                    g.drawHorizontalLine (lane.getY(), (float) visible.getX(), (float) visible.getRight());
+                    g.drawHorizontalLine (lane.getBottom() - 1, (float) visible.getX(), (float) visible.getRight());
+
+                    // Tag at the right of the lane (the clip names sit on the left). The lanes are always as wide
+                    // as the screen (time scrolls by the view, not the viewport), so this never depends on the
+                    // repainted region: a partial repaint drew a second tag when it did.
+                    const auto text = juce::String ("Frozen: Ctrl+Alt+F to edit");
+                    const auto tagFont = Theme::font (Theme::smallFontSize, true);
+                    g.setFont (tagFont);
+                    const auto tagW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (tagFont, text)) + 16;
+                    const auto tag = juce::Rectangle<int> (getWidth() - tagW - 14, lane.getY() + 4, tagW, 18);
+
+                    if (tag.getX() > 40 && tag.intersects (g.getClipBounds()))
+                    {
+                        g.setColour (Theme::frozen.withAlpha (0.9f));
+                        g.fillRoundedRectangle (tag.toFloat(), 4.0f);
+                        g.setColour (Theme::background);
+                        g.drawText (text, tag, juce::Justification::centred);
+                    }
                 }
 
             if (rubberBand.isEmpty())
@@ -483,7 +516,8 @@ namespace ez
         void showClipMenu (te::Clip& clip) override
         {
             enum { cutId = 1, copyId, pasteId, duplicateId, splitId, deleteId, renameId, muteId, colourBase = 100, takeBase = 200,
-                   normaliseId = 300, reverseId, followTempoId, shortFadesId, loopTheseId, fadeInBase = 320, fadeOutBase = 340, gainBase = 360, transposeBase = 400 };
+                   normaliseId = 300, reverseId, followTempoId, shortFadesId, loopTheseId, fadeInBase = 320, fadeOutBase = 340, gainBase = 360, transposeBase = 400,
+                   editNotesId = 500, quantiseBase = 510, noteShiftBase = 530, freezeTrackId = 550 };
 
             struct NamedColour { const char* name; juce::Colour colour; };
             static const NamedColour colours[] = {
@@ -549,6 +583,29 @@ namespace ez
                 menu.addSubMenu ("Audio" + (numSelected > 1 ? " (" + juce::String (numSelected) + " clips)" : juce::String()), audioMenu);
             }
 
+            // MIDI: open the notes, quantise, transpose (what every DAW offers on a pattern)
+            static const std::pair<double, const char*> quantiseChoices[] = { { 1.0, "1/4" }, { 0.5, "1/8" }, { 0.25, "1/16" }, { 0.125, "1/32" },
+                                                                              { 1.0 / 3.0, "1/8 triplets" }, { 1.0 / 6.0, "1/16 triplets" } };
+            static const int noteShifts[] = { 12, 1, -1, -12 };
+
+            if (auto* midi = dynamic_cast<te::MidiClip*> (&clip))
+            {
+                juce::PopupMenu midiMenu, quantiseMenu, shiftMenu;
+                const auto hasNotes = ! midi->getSequence().getNotes().isEmpty();
+
+                for (int i = 0; i < (int) std::size (quantiseChoices); ++i)
+                    quantiseMenu.addItem (quantiseBase + i, quantiseChoices[i].second, hasNotes);
+
+                for (int i = 0; i < (int) std::size (noteShifts); ++i)
+                    shiftMenu.addItem (noteShiftBase + i, (noteShifts[i] > 0 ? "Up " : "Down ") + juce::String (std::abs (noteShifts[i]))
+                                                          + (std::abs (noteShifts[i]) == 12 ? " (an octave)" : " semitone"), hasNotes);
+
+                midiMenu.addItem (editNotesId, "Edit notes\tDouble-click");
+                midiMenu.addSubMenu ("Quantise every note to", quantiseMenu, hasNotes);
+                midiMenu.addSubMenu ("Transpose every note", shiftMenu, hasNotes);
+                menu.addSubMenu ("Notes", midiMenu);
+            }
+
             menu.addItem (loopTheseId, (session.getSelectedClips().size() > 1 ? juce::String ("Loop these clips") : juce::String ("Loop this clip")) + "\tCtrl+L");
 
             // Takes (recording over a loop keeps every pass): pick one; split first to comp parts
@@ -572,6 +629,12 @@ namespace ez
                 takeMenu.addSeparator();
                 takeMenu.addItem (-1, "Tip: split the clip (Ctrl+E), then pick a take for each part", false);
                 menu.addSubMenu ("Takes (" + juce::String (current + 1) + " of " + juce::String (takes.size()) + ")", takeMenu);
+            }
+
+            if (const auto track = te::getAudioTracks (clip.edit).indexOf (dynamic_cast<te::AudioTrack*> (clip.getClipTrack())); track >= 0)
+            {
+                menu.addSeparator();
+                menu.addItem (freezeTrackId, session.isTrackFrozen (track) ? "Unfreeze the track\tCtrl+Alt+F" : "Freeze the track (save CPU)\tCtrl+Alt+F");
             }
 
             menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
@@ -623,8 +686,30 @@ namespace ez
                                             onSelection ([&s, on] (te::Clip& c) { return s.setClipFollowsTempo (c, on); }, "Tempo");
                                             break;
                                         }
+                                        case editNotesId:
+                                            s.selectClip (clipPtr);
+
+                                            if (o.onEditClip)
+                                                o.onEditClip();
+                                            break;
+                                        case freezeTrackId:
+                                        {
+                                            const auto track = te::getAudioTracks (clipPtr->edit).indexOf (dynamic_cast<te::AudioTrack*> (clipPtr->getClipTrack()));
+                                            o.report (s.setTrackFrozen (track, ! s.isTrackFrozen (track)), "Freeze");
+                                            break;
+                                        }
                                         default:
-                                            if (result >= transposeBase)
+                                            if (result >= noteShiftBase && result < noteShiftBase + (int) std::size (noteShifts))
+                                            {
+                                                if (auto* midi = dynamic_cast<te::MidiClip*> (clipPtr))
+                                                    o.report (s.moveMidiNotes (*midi, midi->getSequence().getNotes(), 0.0, noteShifts[result - noteShiftBase]), "Transpose");
+                                            }
+                                            else if (result >= quantiseBase && result < quantiseBase + (int) std::size (quantiseChoices))
+                                            {
+                                                if (auto* midi = dynamic_cast<te::MidiClip*> (clipPtr))
+                                                    o.report (s.quantiseMidiNotes (*midi, midi->getSequence().getNotes(), quantiseChoices[result - quantiseBase].first), "Quantise");
+                                            }
+                                            else if (result >= transposeBase && result < transposeBase + 49)
                                             {
                                                 const auto st = (float) (result - transposeBase - 24);
                                                 onSelection ([&s, st] (te::Clip& c) { return s.setClipTranspose (c, st); }, "Transpose");
