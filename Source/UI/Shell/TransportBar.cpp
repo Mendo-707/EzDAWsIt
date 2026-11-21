@@ -297,6 +297,9 @@ namespace ez
             { &redoButton, CommandIDs::redo },
             { &punchInButton, CommandIDs::punchInHere }, { &punchOutButton, CommandIDs::punchOutHere },
             { &syncButton, CommandIDs::toggleMidiClock },
+            { &gridButton, CommandIDs::gridMenu },
+            { &selectToolButton, CommandIDs::selectTool }, { &splitToolButton, CommandIDs::splitTool },
+            { &eraseToolButton, CommandIDs::eraseTool },
         };
 
         for (auto [button, id] : commandButtons)
@@ -324,8 +327,8 @@ namespace ez
                 return juce::String ("-");
 
             const auto k = session.getKeyAt (session.getPosition());
-            return k.root < 0 ? juce::String ("-") : Session::describeKey (k.root, k.minor);
-        }, "KEY");
+            return k.root < 0 ? juce::String ("No key") : Session::describeKey (k.root, k.minor);
+        }, "");
 
         signature->setTooltip ("Time signature at the playhead: click to change it, scroll to add or remove a beat per bar. "
                                "Add changes later in the song in the lane above the ruler.");
@@ -422,6 +425,13 @@ namespace ez
 
     void TransportBar::timerCallback()
     {
+        if (gridText != nullptr)
+            if (const auto text = gridText(); text != gridButton.getButtonText())
+            {
+                gridButton.setButtonText (text);
+                resized();
+            }
+
         refreshTransportButtons();   // the transport can stop by itself (end of a count-in, a device change)
         position->refresh();
         tempo->refresh();
@@ -466,7 +476,7 @@ namespace ez
 
         // Decide what fits, least important first: sync, punch, key, signature (both also in the tempo lane),
         // then the button labels, then a narrower main meter, and the main meter last of all
-        std::vector<juce::Component*> optional { &syncButton, &punchInButton, key.get(), signature.get() };
+        std::vector<juce::Component*> optional { &syncButton, &punchInButton, &selectToolButton, key.get(), signature.get() };
         int meterWidth = 200;
         meter->setVisible (true);
         const auto labelled = { &clickButton, &countInButton, &snapButton };
@@ -480,32 +490,49 @@ namespace ez
             punchInButton.setVisible (false);
         }
 
-        const auto widthOf = [&] (juce::Component* c) -> int
-        {
-            if (! c->isVisible())                return 0;
-            if (c == meter.get())                return meterWidth + Theme::groupGap;
-            if (c == &syncButton)                return syncButton.getIdealWidth (h) + Theme::groupGap;
-            if (c == &punchInButton)             return punchInButton.getIdealWidth (h) + punchOutButton.getIdealWidth (h) + 6;
-            if (c == key.get())                  return key->getIdealWidth() + 8;
-            if (c == signature.get())            return signature->getIdealWidth() + 8;
-            return 0;
-        };
 
+        // Exactly what the layout below uses, for what's visible now
         const auto needed = [&]
         {
-            int total = 4 * (Theme::iconButtonWidth + 4) + Theme::groupGap + Theme::positionDisplayWidth + 8 + Theme::bpmDisplayWidth + 8
-                      + 2 * Theme::groupGap + 2;
-            for (auto* b : labelled)   total += b->getIdealWidth (h) + 6;
-            total += 2 * (Theme::iconButtonWidth + 4) + Theme::groupGap * 2;
-            for (auto* c : optional)   total += widthOf (c);
-            return total + widthOf (meter.get());
+            int total = 4 * (Theme::iconButtonWidth + 4) + (Theme::groupGap - 4) + Theme::positionDisplayWidth + 8 + Theme::bpmDisplayWidth + 8;
+
+            for (auto* lcd : { signature.get(), key.get() })
+                if (lcd->isVisible())
+                    total += lcd->getIdealWidth() + 8;
+
+            total += Theme::groupGap + clickButton.getIdealWidth (h) + 6 + countInButton.getIdealWidth (h) + 6;
+
+            if (punchInButton.isVisible())
+                total += 4 + punchInButton.getIdealWidth (h) + punchOutButton.getIdealWidth (h);
+
+            total += Theme::groupGap + snapButton.getIdealWidth (h) + 4 + gridButton.getIdealWidth (h) + 6;
+
+            if (selectToolButton.isVisible())
+                total += 3 * (Theme::iconButtonWidth + 2) + 6;
+
+            total += 2 * (Theme::iconButtonWidth + 4);
+
+            if (meter->isVisible())
+                total += meterWidth + Theme::groupGap;
+
+            if (syncButton.isVisible())
+                total += syncButton.getIdealWidth (h) + 4;
+
+            return total;
         };
 
         for (auto* c : optional)
+        {
+            if (needed() > r.getWidth() && meterWidth > 180)
+                meterWidth = 180;   // a narrower meter (still labelled) before any control goes
+
             if (needed() > r.getWidth())
                 c->setVisible (false);
+        }
 
         punchOutButton.setVisible (punchInButton.isVisible());
+        splitToolButton.setVisible (selectToolButton.isVisible());
+        eraseToolButton.setVisible (selectToolButton.isVisible());
 
         if (needed() > r.getWidth())
             for (auto* b : labelled)
@@ -561,9 +588,22 @@ namespace ez
         separatorXs.add (r.getX() + Theme::groupGap / 2);
         r.removeFromLeft (Theme::groupGap);
 
-        // Editing
+        // Editing: snap and its grid, the tools, undo and redo
         snapButton.setBounds (fit (r.removeFromLeft (snapButton.getIdealWidth (h))));
+        r.removeFromLeft (4);
+        gridButton.setBounds (fit (r.removeFromLeft (gridButton.getIdealWidth (h))));
         r.removeFromLeft (6);
+
+        if (selectToolButton.isVisible())
+        {
+            for (auto* b : { &selectToolButton, &splitToolButton, &eraseToolButton })
+            {
+                b->setBounds (fit (r.removeFromLeft (Theme::iconButtonWidth)));
+                r.removeFromLeft (2);
+            }
+
+            r.removeFromLeft (6);
+        }
 
         for (auto* b : { &undoButton, &redoButton })
         {

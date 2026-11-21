@@ -141,6 +141,15 @@ namespace ez::CommandIDs
         // Help
         showAbout,
         openLogFolder,
-        checkForUpdates
+        checkForUpdates,
+
+        // Tracks (later additions)
+        freezeTrack,
+
+        // Arrange tools and grid
+        selectTool,
+        splitTool,
+        eraseTool,
+        gridMenu
     };
 }

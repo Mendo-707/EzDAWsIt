@@ -98,10 +98,13 @@ namespace ez
                 g.setColour (pitch == heldPitch ? Theme::accent : black ? juce::Colour (0xff17191d) : juce::Colour (0xffd9dce2));
                 g.fillRect (black ? r.withTrimmedRight (getWidth() / 3) : r.withTrimmedBottom (1));
 
-                if (pitch % 12 == 0 && owner.rowHeight >= 10)
+                // C is always named; with room, every key is (white keys dark text, black keys light)
+                const bool named = (pitch % 12 == 0 && owner.rowHeight >= 10) || owner.rowHeight >= 13;
+
+                if (named)
                 {
-                    g.setColour (Theme::ink);
-                    g.setFont (Theme::font (juce::jmin (10.0f, (float) owner.rowHeight - 2.0f), true));
+                    g.setColour (black ? Theme::textDim : pitch % 12 == 0 ? Theme::ink : Theme::ink.withAlpha (0.6f));
+                    g.setFont (Theme::font (juce::jmin (10.0f, (float) owner.rowHeight - 2.0f), pitch % 12 == 0));
                     g.drawText (juce::MidiMessage::getMidiNoteName (pitch, true, true, 3), r.withTrimmedRight (4),
                                 juce::Justification::centredRight, false);
                 }

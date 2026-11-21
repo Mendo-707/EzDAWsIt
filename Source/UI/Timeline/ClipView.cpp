@@ -353,6 +353,14 @@ namespace ez
 
     void ClipView::mouseMove (const juce::MouseEvent& e)
     {
+        if (view.tool != TimelineViewState::Tool::select && ! e.mods.isCtrlDown())
+        {
+            setMouseCursor (view.tool == TimelineViewState::Tool::split ? juce::MouseCursor::IBeamCursor : juce::MouseCursor::CrosshairCursor);
+            setTooltip (view.tool == TimelineViewState::Tool::split ? "Split tool: click to cut the clip here (hold Ctrl to move clips; Alt+1 for the select tool)"
+                                                                     : "Erase tool: click to delete the clip (hold Ctrl to move clips; Alt+1 for the select tool)");
+            return;
+        }
+
         const auto m = modeForPoint (e.getPosition());
         setMouseCursor (m == DragMode::move ? juce::MouseCursor::NormalCursor
                         : m == DragMode::fadeIn || m == DragMode::fadeOut ? juce::MouseCursor::LeftRightResizeCursor
@@ -378,6 +386,26 @@ namespace ez
 
             host.showClipMenu (*clip);
             return;
+        }
+
+        // The split and erase tools act on a click (Ctrl held: the select tool for a moment)
+        if (view.tool != TimelineViewState::Tool::select && ! e.mods.isCtrlDown())
+        {
+            session.selectClip (clip.get());
+
+            if (view.tool == TimelineViewState::Tool::split)
+            {
+                const auto inParent = e.getEventRelativeTo (getParentComponent()).getPosition();
+
+                if (! session.splitClipsAt (snapped (view.xToTime (inParent.x))))
+                    session.showHint (session.getLastError());
+            }
+            else if (! session.deleteSelectedClips())
+            {
+                session.showHint (session.getLastError());
+            }
+
+            return;   // this view may be gone now: touch nothing else
         }
 
         if (e.mods.isShiftDown())

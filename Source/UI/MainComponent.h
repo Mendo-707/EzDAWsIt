@@ -117,6 +117,9 @@ namespace ez
         void chooseSongToOpen();
         void chooseAudioFileToImport();
         void showAddTrackMenu (juce::Component* anchor);
+        void showGridMenu();
+        static juce::String describeGrid (double beats);
+        static std::vector<std::pair<double, juce::String>> gridChoices();
         void showInstrumentMenu (juce::Component* anchor);
         void openSongOrReport (const juce::File&, bool useAutosave, bool createNewSongIfItFails);
         void showError (const juce::String& title, const juce::String& message);

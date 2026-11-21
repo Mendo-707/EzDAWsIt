@@ -20,7 +20,8 @@ namespace ez
         none, play, stop, record, returnToStart, loop, metronome, countIn, magnet, undo, redo,
         newFile, open, save, sliders, headphones, speaker, chevronDown, chevronUp, chevronRight,
         search, piano, mic, plug, exportFile, plus, close, layers, chain, file, note, bookmark,
-        drum, help, clock, zoomIn, zoomOut, wand, flag, power
+        drum, help, clock, zoomIn, zoomOut, wand, flag, power,
+        pointer, scissors, eraser, snowflake
     };
 
     namespace Icons

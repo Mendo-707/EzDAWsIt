@@ -110,4 +110,9 @@ namespace ez::PluginDisplays
         float bandPass (float hz, float f0, float q);
         float notch (float hz, float f0, float q);
     }
+
+    /** A live, read-only thumbnail of a plugin's main display (its EQ curve, compressor curve...)
+        for device cards. Asks for the plugin through `resolve` each time it draws, so it never
+        holds a plugin that has gone. Nothing if the plugin has no designed display. */
+    std::unique_ptr<juce::Component> createPreview (te::Plugin&, std::function<te::Plugin*()> resolve);
 }

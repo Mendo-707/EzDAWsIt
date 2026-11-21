@@ -216,6 +216,34 @@ namespace ez
             return recipes;
         }
 
+        /** A starter beat for a template's drum machine: 16 steps a bar for kick, snare (or clap) and
+            closed hat, as strings ("x" a hit, "o" a soft hit, "." nothing); bar 4 gets a small fill. */
+        struct StarterBeat
+        {
+            const char* kick;
+            const char* snare;
+            const char* hat;
+            int snarePad = 1;     // 1 snare, 2 clap
+            const char* fill;     // the snare in bar 4
+        };
+
+        std::optional<StarterBeat> starterBeatFor (const juce::String& templateName)
+        {
+            //                                            1...2...3...4...
+            if (templateName.startsWith ("Hip hop"))
+                return StarterBeat { "x......x..x.....", "....x.......x...", "x.o.x.o.x.o.x.o.", 1, "....x.......x.xx" };
+            if (templateName.startsWith ("Trap"))
+                return StarterBeat { "x.....x...x.....", "........x.......", "xoxoxoxoxoxoxxxx", 2, "........x.....xx" };
+            if (templateName.startsWith ("Drum & bass"))
+                return StarterBeat { "x.........x.....", "....x.......x...", "x.x.x.x.x.x.x.x.", 1, "....x.......x.xx" };
+            if (templateName.startsWith ("Lo-fi"))
+                return StarterBeat { "x........x......", "....x.......x...", "x.o.x.o.x.o.x.o.", 1, "....x.......x..x" };
+            if (templateName == "Punk" || templateName == "Hardcore" || templateName == "Metal" || templateName == "Rock band")
+                return StarterBeat { "x.......x.x.....", "....x.......x...", "x.x.x.x.x.x.x.x.", 1, "....x.......xxxx" };
+
+            return std::nullopt;
+        }
+
         const std::vector<TemplateRecipe>& templateRecipes()
         {
             static const std::vector<TemplateRecipe> recipes
@@ -880,6 +908,43 @@ namespace ez
                 applyMasterPreset (recipe.masterPreset);
 
             setMasterTarget (recipe.target);
+
+            // Beat templates start with a 4-bar beat on the drum machine: press Play and hear the style at once
+            if (const auto beat = starterBeatFor (recipe.name))
+            {
+                for (int t = 0; t < getNumAudioTracks(); ++t)
+                {
+                    if (getDrumMachine (t) == nullptr)
+                        continue;
+
+                    const auto bars = 4;
+                    const auto end = edit->tempoSequence.toTime (te::BeatPosition::fromBeats (getBarStartBeat (bars)));
+
+                    if (! createMidiClip (t, te::TimePosition(), end - te::TimePosition(), "Beat"))
+                        break;
+
+                    if (auto* clip = dynamic_cast<te::MidiClip*> (te::getAudioTracks (*edit)[t]->getClips().getLast()))
+                    {
+                        const auto lay = [&] (const char* steps, int pad, double barStart)
+                        {
+                            for (int s = 0; s < 16 && steps[s] != 0; ++s)
+                                if (steps[s] != '.')
+                                    addMidiNote (*clip, DrumMachinePlugin::noteForPad (pad), barStart + s * 0.25, 0.25, steps[s] == 'x' ? 110 : 70);
+                        };
+
+                        for (int bar = 0; bar < bars; ++bar)
+                        {
+                            const auto start = getBarStartBeat (bar);
+                            lay (beat->kick, 0, start);
+                            lay (bar == bars - 1 ? beat->fill : beat->snare, beat->snarePad, start);
+                            lay (beat->hat, 4, start);
+                        }
+                    }
+
+                    break;   // the first drum machine only
+                }
+            }
+
             edit->getUndoManager().clearUndoHistory();
 
             if (! failed.isEmpty())
@@ -889,6 +954,7 @@ namespace ez
             }
             notifyStateChanged();
             writeSongNow (true);   // on disk at once, like any new song (a failed save says so itself)
+            edit->getUndoManager().clearUndoHistory();   // saving flushes plugin state through the undo manager
             return true;
         }
 

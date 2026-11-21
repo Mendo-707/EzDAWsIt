@@ -121,7 +121,8 @@ namespace ez
         }
 
         outputBox.setSelectedItemIndex (outputIDs.indexOf (mainID), juce::dontSendNotification);
-        outputBox.setTextWhenNothingSelected ("No output");
+        outputBox.setTextWhenNothingSelected (outputs.isEmpty() ? "No audio output: open Setup" : "Pick an output");
+        outputBox.setTextWhenNoChoicesAvailable ("No audio outputs found: open Setup");
     }
 
     //==============================================================================
@@ -151,9 +152,12 @@ namespace ez
             g.setColour (Theme::ink);
             g.strokePath (wave, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-            g.setColour (Theme::text);
-            g.setFont (Theme::font (Theme::titleFontSize - 0.5f, true));
-            g.drawText ("EzDAWsIt", logoArea.withTrimmedLeft (logoSize + 8), juce::Justification::centredLeft, false);
+            if (logoArea.getWidth() > logoSize + 40)   // narrow windows: the mark alone
+            {
+                g.setColour (Theme::text);
+                g.setFont (Theme::font (Theme::titleFontSize - 0.5f, true));
+                g.drawText ("EzDAWsIt", logoArea.withTrimmedLeft (logoSize + 8), juce::Justification::centredLeft, false);
+            }
         }
 
         // Song name
@@ -229,7 +233,7 @@ namespace ez
 
         // Fixed parts first: what must always be visible
         const auto fileButtons = { &newButton, &openButton, &saveButton };
-        const auto optional = { &helpButton, &proButton, &easyButton, &tunerButton, &exportButton };   // hidden first when narrow
+        const auto optional = { &tunerButton, &helpButton, &proButton, &easyButton, &exportButton };   // hidden first when narrow
 
         for (auto* b : optional)
             b->setVisible (true);
@@ -249,11 +253,25 @@ namespace ez
             return total;
         };
 
+        int outputWidthWanted = outputBoxWidth, logoWidth = 112;
+
         auto needed = [&]
         {
-            return 112 + 17 + widthOf (fileButtons) + 17 + 120 /* song name */ + viewWidth + 20
-                 + outputBoxWidth + 10 + widthOf ({ &setupButton, &sizeButton }) + 10 + widthOf (optional) + 30;
+            return logoWidth + 17 + widthOf (fileButtons) + 17 + 120 /* song name */ + viewWidth + 20
+                 + outputWidthWanted + 10 + widthOf ({ &setupButton, &sizeButton }) + 10 + widthOf (optional) + 30;
         };
+
+        // Narrowing, least useful first: file buttons to icons, a narrower output box, the logo without its
+        // name, then whole buttons (Export last: it's how a song leaves the app)
+        if (needed() > r.getWidth())
+            for (auto* b : fileButtons)
+                b->setShowText (false);   // icons only (tooltips still say what they do)
+
+        if (needed() > r.getWidth())
+            outputWidthWanted = outputBoxMinWidth;
+
+        if (needed() > r.getWidth())
+            logoWidth = logoSize + 4;
 
         for (auto* b : optional)
             if (needed() > r.getWidth())
@@ -261,12 +279,8 @@ namespace ez
 
         easyButton.setVisible (proButton.isVisible());   // the pair hides together
 
-        if (needed() > r.getWidth())
-            for (auto* b : fileButtons)
-                b->setShowText (false);   // icons only (tooltips still say what they do)
-
         // Left: logo, file buttons, song name
-        logoArea = r.removeFromLeft (112);
+        logoArea = r.removeFromLeft (logoWidth);
         r.removeFromLeft (17);
 
         for (auto* b : fileButtons)
@@ -292,7 +306,7 @@ namespace ez
         sizeButton.setBounds (fit (r.removeFromRight (sizeButton.getIdealWidth (h))));
         r.removeFromRight (17);
 
-        const auto outputWidth = juce::jlimit (outputBoxMinWidth, outputBoxWidth, r.getWidth() - viewWidth - 140);
+        const auto outputWidth = juce::jlimit (outputBoxMinWidth, outputWidthWanted, r.getWidth() - viewWidth - 140);
         outputBox.setBounds (fit (r.removeFromRight (outputWidth)));
         outputIconArea = r.removeFromRight (22);
         r.removeFromRight (12);

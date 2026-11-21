@@ -81,6 +81,7 @@ namespace ez
         appBar = std::make_unique<AppBar> (audioEngine, session, commandManager);
         appBar->onOpenSong = [this] (const juce::File& file) { openSongWithRecoveryCheck (file); };
         transportBar = std::make_unique<TransportBar> (session, commandManager);
+        transportBar->gridText = [this] { return describeGrid (timeline.getFixedGridBeats()); };
         browser = std::make_unique<BrowserPanel> (e, session);
         browser->getTargetTrack = [this] { return timeline.getFocusedTrack(); };
         browser->onClose = [this] { commandManager.invokeDirectly (CommandIDs::toggleBrowser, true); };
@@ -221,7 +222,8 @@ namespace ez
                              renameTrack, duplicateTrack, deleteTrack, moveTrackUp, moveTrackDown, previousTrack, nextTrack, toggleFollow, saveSongAs, songMenu, addBus, addFxReturn, routeToNewBus, toggleSends,
                              toggleAutomationLanes, toggleAutomationWrite, toggleAutomationRead,
                              interfaceBigger, interfaceSmaller, interfaceAutomatic,
-                             muteTrack, soloTrack, armTrack, exportSong, focusSearch });
+                             muteTrack, soloTrack, armTrack, freezeTrack, exportSong, focusSearch,
+                             selectTool, splitTool, eraseTool, gridMenu });
     }
 
     void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info)
@@ -644,6 +646,42 @@ namespace ez
                 info.setActive (hasSong);
                 break;
 
+            case CommandIDs::selectTool:
+            case CommandIDs::splitTool:
+            case CommandIDs::eraseTool:
+            {
+                using Tool = TimelineView::Tool;
+                const auto tool = id == CommandIDs::selectTool ? Tool::select : id == CommandIDs::splitTool ? Tool::split : Tool::erase;
+                const auto key = id == CommandIDs::selectTool ? '1' : id == CommandIDs::splitTool ? '2' : '3';
+                info.setInfo (tool == Tool::select ? "Select tool" : tool == Tool::split ? "Split tool" : "Erase tool",
+                              tool == Tool::select ? "Select, move and trim clips (Alt+1)"
+                              : tool == Tool::split ? "Click a clip to cut it in two at that point; hold Ctrl to move clips (Alt+2)"
+                                                    : "Click a clip to delete it; hold Ctrl to move clips (Alt+3)", "Edit", 0);
+                info.addDefaultKeypress (key, ModifierKeys::altModifier);
+                info.setTicked (timeline.getTool() == tool);
+                info.setActive (hasSong);
+                break;
+            }
+
+            case CommandIDs::gridMenu:
+                info.setInfo ("Grid", "The grid clips snap to: automatic follows the zoom, or pick a note length (Ctrl+G)", "Edit", 0);
+                info.addDefaultKeypress ('g', cmd);
+                info.setActive (hasSong);
+                break;
+
+            case CommandIDs::freezeTrack:
+            {
+                const auto t = timeline.getFocusedTrack();
+                const bool frozen = hasSong && session.isTrackFrozen (t);
+                info.setInfo (frozen ? "Unfreeze track" : "Freeze track",
+                              "Freeze: render the highlighted track to audio once so its instrument and effects stop using the computer; "
+                              "unfreeze to edit it again (Ctrl+Alt+F)", "Track", 0);
+                info.addDefaultKeypress ('f', cmd | ModifierKeys::altModifier);
+                info.setTicked (frozen);
+                info.setActive (hasSong && ! session.isRecording());
+                break;
+            }
+
             case CommandIDs::armTrack:
                 info.setInfo ("Arm track", "Arm or disarm the highlighted track for recording (Shift+R)", "Track", 0);
                 info.addDefaultKeypress ('r', ModifierKeys::shiftModifier);
@@ -871,6 +909,45 @@ namespace ez
 
             case CommandIDs::muteTrack:
             case CommandIDs::soloTrack:
+            case CommandIDs::selectTool:
+            case CommandIDs::splitTool:
+            case CommandIDs::eraseTool:
+            {
+                using Tool = TimelineView::Tool;
+                const auto tool = info.commandID == CommandIDs::selectTool ? Tool::select : info.commandID == CommandIDs::splitTool ? Tool::split : Tool::erase;
+                timeline.setTool (tool);
+                session.showHint (tool == Tool::select ? "Select tool: click selects, drag moves and trims"
+                                  : tool == Tool::split ? "Split tool: click a clip to cut it (Ctrl: move clips; Alt+1 back to select)"
+                                                        : "Erase tool: click a clip to delete it (Ctrl: move clips; Alt+1 back to select)");
+                commandManager.commandStatusChanged();
+                return true;
+            }
+
+            case CommandIDs::gridMenu:
+                showGridMenu();
+                return true;
+
+            case CommandIDs::freezeTrack:
+            {
+                const auto t = timeline.getFocusedTrack();
+
+                if (! juce::isPositiveAndBelow (t, session.getNumAudioTracks()))
+                    return true;
+
+                const auto name = session.getTrackName (t);
+                const auto freeze = ! session.isTrackFrozen (t);
+
+                if (freeze)
+                    session.showHint ("Freezing " + name + "...");
+
+                if (session.setTrackFrozen (t, freeze))
+                    session.showHint (freeze ? name + " frozen: it plays from audio now (Ctrl+Alt+F to unfreeze and edit)" : name + " unfrozen: editable again");
+                else
+                    session.showHint (session.getLastError());
+
+                return true;
+            }
+
             case CommandIDs::armTrack:
             {
                 // The drum machine (pad mute/solo) and the Mix view's own keys come first
@@ -1600,6 +1677,48 @@ namespace ez
             if (! shownPluginHeader)
                 menu.addSectionHeader ("Setup > Plugins scans your VST3 instruments");
         }
+    }
+
+    juce::String MainComponent::describeGrid (double beats)
+    {
+        for (const auto& [b, name] : gridChoices())
+            if (std::abs (b - beats) < 1.0e-6)
+                return name;
+
+        return "Auto";
+    }
+
+    std::vector<std::pair<double, juce::String>> MainComponent::gridChoices()
+    {
+        return { { 0.0, "Auto" }, { 4.0, "1 bar" }, { 2.0, "1/2" }, { 1.0, "1/4" }, { 0.5, "1/8" }, { 0.25, "1/16" }, { 0.125, "1/32" },
+                 { 1.0 / 3.0, "1/8 T" }, { 1.0 / 6.0, "1/16 T" } };
+    }
+
+    void MainComponent::showGridMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("Grid (clips snap to it)");
+        const auto current = timeline.getFixedGridBeats();
+
+        for (const auto& [beats, name] : gridChoices())
+        {
+            if (beats == 1.0 / 3.0)
+                menu.addSeparator();
+
+            menu.addItem (beats == 0.0 ? juce::String ("Automatic (follows the zoom)") : name, true, std::abs (beats - current) < 1.0e-6,
+                          [safe = juce::Component::SafePointer<MainComponent> (this), b = beats]
+                          {
+                              if (safe != nullptr)
+                              {
+                                  safe->timeline.setFixedGridBeats (b);
+                                  safe->session.showHint ("Grid: " + describeGrid (b) + (b == 0.0 ? " (follows the zoom)" : ""));
+                              }
+                          });
+        }
+
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::toggleSnap);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&transportBar->getGridButton()));
     }
 
     void MainComponent::showAddTrackMenu (juce::Component* anchor)

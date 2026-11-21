@@ -20,6 +20,13 @@ namespace ez
 
         double viewStartSeconds = 0.0;
         double pixelsPerSecond = 60.0;
+
+        /** The arrange tools: select/move (the default), split clips where you click, erase clips you click. */
+        enum class Tool { select, split, erase };
+        Tool tool = Tool::select;
+
+        /** A grid the user chose (beats: 0.25 = 1/16), or 0 for automatic (it follows the zoom). */
+        double fixedGridBeats = 0.0;
         bool snapEnabled = true;
         int trackHeight = defaultTrackHeight;
         int focusedTrack = 0;              // where Paste goes; the last track clicked
@@ -73,10 +80,14 @@ namespace ez
             return te::TimePosition::fromSeconds (juce::jmax (0.0, viewStartSeconds + x / pixelsPerSecond));
         }
 
-        /** The finest grid (in beats) whose lines stay at least minGridSpacingPixels apart. */
+        /** The grid in beats: the one the user chose, else the finest whose lines stay at least
+            minGridSpacingPixels apart. A chosen grid too fine to see at this zoom falls back to automatic. */
         double getGridBeats (double bpm) const
         {
             const auto pixelsPerBeat = pixelsPerSecond * 60.0 / juce::jmax (1.0, bpm);
+
+            if (fixedGridBeats > 0.0 && fixedGridBeats * pixelsPerBeat >= 5.0)
+                return fixedGridBeats;
 
             for (auto beats : { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0 })
                 if (beats * pixelsPerBeat >= minGridSpacingPixels)

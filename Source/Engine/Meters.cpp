@@ -41,6 +41,7 @@ namespace ez
         // Message thread, while the audio graph isn't running this plugin: safe to allocate
         prepared = false;
         loudness.prepare (info.sampleRate, 2, juce::jmax (64, info.blockSizeSamples));
+        sampleRate = info.sampleRate;
         prepared = true;
     }
 
@@ -80,7 +81,30 @@ namespace ez
         }
 
         if (prepared && channels > 0)
+        {
             loudness.process (pointers, 2, fc.bufferNumSamples);
+
+            // For the spectrum: left and right summed. Whatever doesn't fit is dropped (nobody is reading)
+            int start1, size1, start2, size2;
+            fifo.prepareToWrite (fc.bufferNumSamples, start1, size1, start2, size2);
+
+            for (int i = 0; i < size1 + size2; ++i)
+                fifoData[(size_t) (i < size1 ? start1 + i : start2 + i - size1)] = 0.5f * (pointers[0][i] + pointers[1][i]);
+
+            fifo.finishedWrite (size1 + size2);
+        }
+    }
+
+    int MasterTapPlugin::readSamples (float* dest, int maxSamples) noexcept
+    {
+        int start1, size1, start2, size2;
+        fifo.prepareToRead (maxSamples, start1, size1, start2, size2);
+
+        if (size1 > 0) std::copy_n (fifoData.data() + start1, size1, dest);
+        if (size2 > 0) std::copy_n (fifoData.data() + start2, size2, dest + size1);
+
+        fifo.finishedRead (size1 + size2);
+        return size1 + size2;
     }
 
     //==============================================================================
@@ -252,6 +276,9 @@ namespace ez
 
             main.loudness = tap->getLoudness();
 
+            const auto read = tap->readSamples (readBuffer.data(), (int) readBuffer.size());
+            analyseSamples (readBuffer.data(), read, tap->getSampleRate(), elapsed);
+
             for (auto* value : { &main.loudness.momentaryLufs, &main.loudness.shortTermLufs, &main.loudness.integratedLufs,
                                  &main.loudness.maxMomentaryLufs, &main.loudness.maxShortTermLufs, &main.loudness.truePeakDb, &main.loudness.samplePeakDb })
                 if (*value > te::LoudnessMeter::silenceFloorDb)
@@ -271,6 +298,58 @@ namespace ez
     MeterBank::MainReading MeterBank::getMain() const
     {
         return main;
+    }
+
+    void MeterBank::analyseSamples (const float* samples, int numSamples, double sampleRate, float elapsedSeconds)
+    {
+        if (numSamples <= 0)
+        {
+            // nothing new (stopped): the bars fall away instead of freezing on the last sound
+            for (auto& shown : spectrum)
+                shown = juce::jmax (-100.0f, shown - 20.0f * juce::jmax (0.01f, elapsedSeconds));
+
+            return;
+        }
+
+        // keep the latest fftSize samples
+        if (numSamples >= fftSize)
+        {
+            std::copy_n (samples + numSamples - fftSize, fftSize, history.begin());
+        }
+        else if (numSamples > 0)
+        {
+            std::move (history.begin() + numSamples, history.end(), history.begin());
+            std::copy_n (samples, numSamples, history.end() - numSamples);
+        }
+
+        std::copy (history.begin(), history.end(), fftData.begin());
+        std::fill (fftData.begin() + fftSize, fftData.end(), 0.0f);
+        window.multiplyWithWindowingTable (fftData.data(), (size_t) fftSize);
+        fft.performFrequencyOnlyForwardTransform (fftData.data(), true);
+
+        if (spectrum.empty())
+            spectrum.assign ((size_t) spectrumBands, -100.0f);
+
+        // bands evenly spaced in log frequency; each takes the loudest bin it covers
+        const auto binHz = sampleRate / fftSize;
+        const auto fall = 20.0f * juce::jmax (0.01f, elapsedSeconds);
+        const auto scale = 2.0f / (float) fftSize;   // a full-scale sine reads about 0 dB (JUCE normalises the window's gain to 1)
+
+        for (int b = 0; b < spectrumBands; ++b)
+        {
+            const auto lo = 20.0 * std::pow (1000.0, (double) b / spectrumBands);
+            const auto hi = 20.0 * std::pow (1000.0, (double) (b + 1) / spectrumBands);
+            const auto first = juce::jlimit (1, fftSize / 2 - 1, (int) std::floor (lo / binHz));
+            const auto last = juce::jlimit (first, fftSize / 2 - 1, (int) std::ceil (hi / binHz));
+            float magnitude = 0.0f;
+
+            for (int bin = first; bin <= last; ++bin)
+                magnitude = juce::jmax (magnitude, fftData[(size_t) bin]);
+
+            const auto db = juce::Decibels::gainToDecibels (magnitude * scale, -100.0f);
+            auto& shown = spectrum[(size_t) b];
+            shown = db > shown ? db : juce::jmax (db, shown - fall);
+        }
     }
 
     void MeterBank::resetTrack (int trackIndex)

@@ -408,13 +408,20 @@ namespace ez
             }
         }
 
+        /** The narrowest the row gets before it scrolls: cards shrink to 80 % of their preferred widths. */
+        int getMinimumWidth() const     { return juce::roundToInt ((float) (getPreferredWidth() - arrowWidth * (cards.size() - 1)) * 0.8f) + arrowWidth * (cards.size() - 1); }
+
         void resized() override
         {
+            // the cards share the width in proportion to their preferred widths: all five always show
             auto r = getLocalBounds();
+            const auto preferredCards = (float) (getPreferredWidth() - arrowWidth * (cards.size() - 1));
+            const auto scale = (float) (getWidth() - arrowWidth * (cards.size() - 1)) / juce::jmax (1.0f, preferredCards);
 
-            for (auto* c : cards)
+            for (int i = 0; i < cards.size(); ++i)
             {
-                c->setBounds (r.removeFromLeft (c->preferredWidth));
+                auto* c = cards[i];
+                c->setBounds (i + 1 == cards.size() ? r : r.removeFromLeft (juce::roundToInt ((float) c->preferredWidth * scale)));
                 r.removeFromLeft (arrowWidth);
             }
         }
@@ -526,6 +533,23 @@ namespace ez
                 auto label = column.removeFromBottom (14);
                 drawWell (g, column.toFloat(), 4.0f);
                 const auto amount = juce::jlimit (0.0f, 1.0f, -db / 12.0f);
+
+                // a scale, so an idle band reads as a meter at rest rather than an empty box
+                g.setFont (Theme::font (Theme::captionFontSize - 1.0f));
+
+                for (int tick = 1; tick <= 3; ++tick)
+                {
+                    const auto y = (float) column.getY() + 2.0f + ((float) column.getHeight() - 4.0f) * (float) tick / 4.0f;
+                    g.setColour (Theme::hairline);
+                    g.drawHorizontalLine (juce::roundToInt (y), (float) column.getX() + 4.0f, (float) column.getRight() - 4.0f);
+
+                    if (column.getHeight() > 72 && tick < 3)
+                    {
+                        g.setColour (Theme::textFaint);
+                        g.drawText ("-" + juce::String (tick * 3), juce::Rectangle<float> ((float) column.getX() + 4.0f, y - 10.0f, 20.0f, 9.0f),
+                                    juce::Justification::centredLeft, false);
+                    }
+                }
 
                 if (amount > 0.0f)
                 {
@@ -956,6 +980,8 @@ namespace ez
         addAndMakeVisible (presetBox);
 
         chainRow = std::make_unique<ChainRow> (*this);
+        spectrum = std::make_unique<SpectrumView> (session);
+        addAndMakeVisible (*spectrum);
         chainViewport.setViewedComponent (chainRow.get(), false);
         chainViewport.setScrollBarsShown (false, true);
         addAndMakeVisible (chainViewport);
@@ -1080,7 +1106,8 @@ namespace ez
         }
 
         outputBox.setSelectedItemIndex (outputIDs.indexOf (mainID), juce::dontSendNotification);
-        outputBox.setTextWhenNothingSelected ("No output");
+        outputBox.setTextWhenNothingSelected (outputs.isEmpty() ? "No audio output: open Setup" : "Pick an output");
+        outputBox.setTextWhenNoChoicesAvailable ("No audio outputs found: open Setup");
     }
 
     void MasterView::timerCallback()
@@ -1168,8 +1195,8 @@ namespace ez
         headerArea = r.removeFromTop (34);
         r = r.reduced (12, 10);
 
-        // Main output along the bottom
-        outputArea = r.removeFromBottom (48);
+        // Main output along the bottom, with its spectrum (taller when the window has room to spare)
+        outputArea = r.removeFromBottom (juce::jlimit (48, 120, r.getHeight() - 540));
         r.removeFromBottom (gap);
         {
             auto out = outputArea.reduced (12, 0);
@@ -1178,7 +1205,11 @@ namespace ez
             out.removeFromRight (8);
             setupButton.setBounds (out.removeFromRight (setupButton.getIdealWidth (28)).withSizeKeepingCentre (setupButton.getIdealWidth (28), 28));
             out.removeFromRight (12);
-            outputBox.setBounds (out.removeFromLeft (juce::jmin (320, out.getWidth())).withSizeKeepingCentre (juce::jmin (320, out.getWidth()), 28));
+            const auto boxWidth = juce::jmin (260, out.getWidth());
+            outputBox.setBounds (out.removeFromLeft (boxWidth).withSizeKeepingCentre (boxWidth, 28));
+            out.removeFromLeft (12);
+            spectrum->setVisible (out.getWidth() >= 120);
+            spectrum->setBounds (out.reduced (0, 6));
         }
 
         // Chain: title row, then the cards (scrolling sideways if they don't fit)
@@ -1191,9 +1222,9 @@ namespace ez
 
         const auto chainHeight = juce::jlimit (150, 220, r.getHeight() / 2);
         auto chainArea = r.removeFromTop (chainHeight);
-        const auto needsScroll = chainRow->getPreferredWidth() > chainArea.getWidth();
+        const auto needsScroll = chainRow->getMinimumWidth() > chainArea.getWidth();
         chainViewport.setBounds (chainArea);
-        chainRow->setSize (juce::jmax (chainArea.getWidth(), chainRow->getPreferredWidth()),
+        chainRow->setSize (juce::jmax (chainArea.getWidth(), chainRow->getMinimumWidth()),
                            chainArea.getHeight() - (needsScroll ? chainViewport.getScrollBarThickness() : 0));
         r.removeFromTop (gap);
 

@@ -276,6 +276,10 @@ namespace ez
         /** The track's instrument, if it has one. */
         std::optional<DeviceInfo> getInstrumentInfo (int trackIndex) const;
 
+        /** The effect with this DeviceInfo id, for drawing its state (device previews). Read it, never keep it:
+            look it up again each time (undo and removal replace plugins). Nullptr if it has gone. */
+        te::Plugin* findEffect (int trackIndex, const juce::String& id) const;
+
         /** Bypass: a switched-off effect passes the sound through untouched. Undoable. */
         bool setEffectEnabled (int trackIndex, int effectIndex, bool);
 
@@ -302,6 +306,12 @@ namespace ez
         bool isTrackSoloed (int trackIndex) const;
         void setTrackSoloed (int trackIndex, bool);
         bool isTrackArmed (int trackIndex) const;
+
+        /** Freeze: the track is rendered to audio once and its effects and instrument stop running (saves CPU).
+            Unfreeze (the same command) to edit it again. Not an undo step, as in other DAWs; refuses while
+            recording, for buses, and for empty tracks. */
+        bool setTrackFrozen (int trackIndex, bool);
+        bool isTrackFrozen (int trackIndex) const;
         bool setTrackArmed (int trackIndex, bool);     // fails if the track has no input
         /** Volume and pan. When automated (and automation is on) the getters give what the lane says now,
             and the setters refuse with a hint, unless Write is on and the song is playing (that records). */

@@ -20,6 +20,7 @@
 #include "../Core/Version.h"
 #include "../Core/Diagnostics.h"
 #include "../Engine/PluginPresets.h"
+#include "../Engine/Meters.h"
 #include "../UI/PluginLayouts.h"
 #include "../UI/PluginDisplays.h"
 #include "../UI/PluginLook.h"
@@ -519,6 +520,73 @@ namespace ez::Tests
             }
 
             plugins.clear();
+
+            beginTest ("The spectrum shows a 1 kHz tone at 1 kHz, at its level, and falls away in silence");
+            {
+                MeterBank bank (session);
+                std::vector<float> sine (8192);
+
+                for (size_t i = 0; i < sine.size(); ++i)
+                    sine[i] = 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 1000.0 * (double) i / 48000.0);
+
+                bank.analyseSamples (sine.data(), (int) sine.size(), 48000.0, 0.03f);
+                const auto& bands = bank.getSpectrum();
+                expectEquals ((int) bands.size(), MeterBank::spectrumBands);
+
+                if ((int) bands.size() == MeterBank::spectrumBands)
+                {
+                    const auto loudest = (int) std::distance (bands.begin(), std::max_element (bands.begin(), bands.end()));
+                    const auto expected = juce::roundToInt (MeterBank::spectrumBands * std::log (1000.0 / 20.0) / std::log (1000.0));
+                    expect (std::abs (loudest - expected) <= 1, "loudest band " + juce::String (loudest) + ", 1 kHz is band " + juce::String (expected));
+                    expectWithinAbsoluteError (bands[(size_t) loudest], -6.0f, 3.0f);   // half scale is -6 dB
+                    expect (bands[(size_t) juce::roundToInt (MeterBank::spectrumBands * std::log (100.0 / 20.0) / std::log (1000.0))] < -40.0f,
+                            "nothing at 100 Hz");
+
+                    const auto peak = bands[(size_t) loudest];
+                    bank.analyseSamples (nullptr, 0, 48000.0, 1.0f);   // a second of nothing
+                    expectWithinAbsoluteError (bank.getSpectrum()[(size_t) loudest], peak - 20.0f, 0.5f);
+                }
+            }
+
+            beginTest ("Freeze renders a track to audio and unfreezing gives it back; empty tracks and buses are refused");
+            {
+                const auto synthIndex = session.getNumAudioTracks() - 1;   // the synth track added above
+                expect (! session.setTrackFrozen (synthIndex, true), "nothing to freeze yet");
+                expect (session.getLastError().contains ("nothing to freeze"));
+                expect (! session.isTrackFrozen (synthIndex), "a refusal changes nothing");
+
+                expect (session.createMidiClip (synthIndex, te::TimePosition(), te::TimeDuration::fromSeconds (2.0), "Part"), session.getLastError());
+                expect (session.setTrackFrozen (synthIndex, true), session.getLastError());
+                expect (session.isTrackFrozen (synthIndex));
+
+                if (auto* frozenTrack = te::getAudioTracks (*session.getEdit())[synthIndex])
+                {
+                    const auto file = te::TemporaryFileManager::getFreezeFileForTrack (*frozenTrack);
+                    expect (file.existsAsFile() && file.getSize() > 0, "the render is on disk: " + file.getFullPathName());
+                }
+
+                // Freeze isn't an undo step (as in Logic): the same command unfreezes. What Undo must never do is
+                // leave a track frozen without the freeze point it plays from.
+                session.undo();
+
+                if (auto* frozenTrack = te::getAudioTracks (*session.getEdit())[synthIndex])
+                {
+                    bool hasFreezePoint = false;
+
+                    for (auto* p : frozenTrack->pluginList)
+                        hasFreezePoint = hasFreezePoint || dynamic_cast<te::FreezePointPlugin*> (p) != nullptr;
+
+                    expect (! session.isTrackFrozen (synthIndex) || hasFreezePoint, "undo after a freeze leaves the track playable");
+                }
+
+                session.redo();
+                expect (session.setTrackFrozen (synthIndex, false), session.getLastError());
+                expect (! session.isTrackFrozen (synthIndex));
+
+                const auto bus = session.addBusTrack();
+                expect (bus >= 0 && ! session.setTrackFrozen (bus, true), "buses can't be frozen");
+            }
+
             session.closeSong();
         }
 
@@ -3067,6 +3135,29 @@ namespace ez::Tests
             expect (session.getNumAudioTracks() >= 6, juce::String (session.getNumAudioTracks()) + " tracks");
             expect (session.isMasterChainOn(), "the master chain is on");
             expect (session.getDrumMachine (0) != nullptr, "drums first");
+
+            beginTest ("Beat templates start with a 4-bar beat on the drum machine, so Play makes a sound straight away");
+            {
+                const auto& drumClips = te::getAudioTracks (*session.getEdit())[0]->getClips();
+                expectEquals (drumClips.size(), 1);
+
+                if (auto* beat = dynamic_cast<te::MidiClip*> (drumClips.getFirst()))
+                {
+                    const auto& notes = beat->getSequence().getNotes();
+                    int kicks = 0, snares = 0;
+
+                    for (auto* n : notes)
+                    {
+                        kicks += n->getNoteNumber() == DrumMachinePlugin::noteForPad (0) ? 1 : 0;
+                        snares += n->getNoteNumber() == DrumMachinePlugin::noteForPad (1) ? 1 : 0;
+                    }
+
+                    expectEquals (kicks, 12, "three kicks a bar");
+                    expect (snares >= 8, "a backbeat every bar (and a fill)");
+                    expectWithinAbsoluteError (beat->getLengthInBeats().inBeats(), 16.0, 0.001, "four bars");
+                    expect (! session.getEdit()->getUndoManager().canUndo(), "the template is the song's starting point: nothing to undo");
+                }
+            }
 
             beginTest ("Presets: every built-in template opens, with all its tracks and effects");
             for (const auto& t : session.getPresets (Kind::songTemplate))

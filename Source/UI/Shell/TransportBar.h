@@ -29,6 +29,10 @@ namespace ez
         void paintOverChildren (juce::Graphics&) override;
         void resized() override;
 
+        /** The grid's name for its button ("Auto", "1/16"...), and where its menu opens. */
+        std::function<juce::String()> gridText;
+        juce::Component& getGridButton()    { return gridButton; }
+
     private:
         class PositionDisplay;
         class TempoDisplay;
@@ -48,6 +52,10 @@ namespace ez
         IconButton undoButton   { "Undo", Icon::undo };
         IconButton redoButton   { "Redo", Icon::redo };
         IconButton syncButton   { "Sync", Icon::clock, "Sync" };
+        IconButton gridButton   { "Grid", Icon::none, "Auto" };
+        IconButton selectToolButton { "Select tool", Icon::pointer };
+        IconButton splitToolButton  { "Split tool", Icon::scissors };
+        IconButton eraseToolButton  { "Erase tool", Icon::eraser };
 
         std::unique_ptr<PositionDisplay> position;
         std::unique_ptr<TempoDisplay> tempo;

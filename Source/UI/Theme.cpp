@@ -117,6 +117,12 @@ namespace ez::Theme
         setColour (juce::TextEditor::outlineColourId, border);
         setColour (juce::TextEditor::focusedOutlineColourId, accent);
         setColour (juce::ListBox::backgroundColourId, panel);
+        setColour (juce::ListBox::outlineColourId, border);
+        setColour (juce::TableHeaderComponent::backgroundColourId, raised);
+        setColour (juce::TableHeaderComponent::textColourId, textDim);
+        setColour (juce::TableHeaderComponent::outlineColourId, border);
+        setColour (juce::TableHeaderComponent::highlightColourId, activeFill);
+        setColour (juce::TableListBox::backgroundColourId, display);
         setColour (juce::ScrollBar::thumbColourId, juce::Colour (0xff3b414e));
         setColour (juce::TooltipWindow::backgroundColourId, raised);
         setColour (juce::TooltipWindow::textColourId, text);
@@ -210,6 +216,63 @@ namespace ez::Theme
         g.drawRect (0, 0, width, height);
     }
 
+    juce::String tidyShortcut (const juce::String& raw)
+    {
+        // JUCE lists every key for a command ("ctrl + =, ctrl + shift + =, ..."): show the first, written "Ctrl+="
+        auto first = raw.upToFirstOccurrenceOf (",", false, false).trim();
+
+        // a key without modifiers is described as "shortcut: 'g'"
+        if (first.startsWithIgnoreCase ("shortcut:"))
+            first = first.fromFirstOccurrenceOf (":", false, false).trim().unquoted().toUpperCase();
+
+        if (! first.containsChar (' '))
+            return first;
+
+        juce::StringArray parts;
+        parts.addTokens (first, "+", {});
+        juce::StringArray tidy;
+
+        for (auto part : parts)
+        {
+            part = part.trim();
+
+            if (part.isEmpty())
+                part = "+";   // "ctrl + +" splits into an empty part: it was the plus key
+
+            tidy.add (part.length() == 1 ? part.toUpperCase() : part.substring (0, 1).toUpperCase() + part.substring (1));
+        }
+
+        tidy.removeEmptyStrings();
+        return tidy.joinIntoString ("+").replace ("++", "+");
+    }
+
+    std::pair<juce::String, juce::String> splitMenuText (const juce::String& itemText, const juce::String& shortcutKeyText)
+    {
+        // Items written "Name\tKeys" or "Name (Ctrl+X)" get the same right-hand shortcut column as command items
+        auto label = itemText.upToFirstOccurrenceOf ("\t", false, false);
+        auto keys = shortcutKeyText.isNotEmpty() ? tidyShortcut (shortcutKeyText) : itemText.fromFirstOccurrenceOf ("\t", false, false);
+
+        // JUCE measures command items as "Name   keys": measure what we draw
+        if (keys.isEmpty() && label.contains ("   "))
+        {
+            keys = tidyShortcut (label.fromFirstOccurrenceOf ("   ", false, false));
+            label = label.upToFirstOccurrenceOf ("   ", false, false);
+        }
+
+        if (keys.isEmpty() && label.endsWithChar (')'))
+        {
+            const auto inBrackets = label.fromLastOccurrenceOf ("(", false, false).dropLastCharacters (1);
+
+            if (inBrackets.startsWith ("Ctrl+") || inBrackets.startsWith ("Shift+") || inBrackets.startsWith ("Alt+"))
+            {
+                keys = inBrackets;
+                label = label.upToLastOccurrenceOf ("(", false, false).trimEnd();
+            }
+        }
+
+        return { label, keys };
+    }
+
     void LookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
                                          bool isHighlighted, bool isTicked, bool hasSubMenu, const juce::String& itemText,
                                          const juce::String& shortcutKeyText, const juce::Drawable* icon, const juce::Colour* textColour)
@@ -268,9 +331,7 @@ namespace ez::Theme
         }
 
         const auto itemFont = getPopupMenuFont();
-        // Items written "Name\tKeys" get the same shortcut column as ones with a shortcut set
-        const auto label = itemText.upToFirstOccurrenceOf ("\t", false, false);
-        const auto keys = shortcutKeyText.isNotEmpty() ? shortcutKeyText : itemText.fromFirstOccurrenceOf ("\t", false, false);
+        const auto [label, keys] = splitMenuText (itemText, shortcutKeyText);
 
         if (keys.isNotEmpty())
         {
@@ -297,8 +358,7 @@ namespace ez::Theme
 
         idealHeight = standardMenuItemHeight > 0 ? standardMenuItemHeight : 26;
         // Text after a tab is the shortcut column: leave room for both
-        const auto main = itemText.upToFirstOccurrenceOf ("\t", false, false);
-        const auto keys = itemText.fromFirstOccurrenceOf ("\t", false, false);
+        const auto [main, keys] = splitMenuText (itemText, {});
         idealWidth = juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), main)
                    + (keys.isNotEmpty() ? juce::GlyphArrangement::getStringWidthInt (font (smallFontSize + 0.5f), keys) + 24 : 0)
                    + idealHeight + 40;

@@ -111,6 +111,7 @@ namespace ez
             row->setToggleState (row->page == page, juce::dontSendNotification);
 
         resized();
+        repaint();   // the page title
     }
 
     void SetupView::paint (juce::Graphics& g)
@@ -122,6 +123,21 @@ namespace ez
         g.fillRect (footerArea);
         g.setColour (Theme::laneSeparator);
         g.drawHorizontalLine (footerArea.getY(), 0.0f, (float) getWidth());
+
+        // The page's title and what it is for
+        if (! titleArea.isEmpty())
+        {
+            const auto [title, description] = describePage (current);
+            auto t = titleArea;
+            g.setColour (Theme::text);
+            g.setFont (Theme::font (Theme::titleFontSize + 2.0f, Theme::Weight::semibold));
+            g.drawText (title, t.removeFromTop (26), juce::Justification::centredLeft, true);
+            g.setColour (Theme::textDim);
+            g.setFont (Theme::font (Theme::smallFontSize + 0.5f));
+            g.drawFittedText (description, t, juce::Justification::topLeft, 2);
+            g.setColour (Theme::laneSeparator);
+            g.drawHorizontalLine (titleArea.getBottom() + 6, (float) titleArea.getX(), (float) titleArea.getRight());
+        }
 
         g.setColour (Theme::textDim);
         g.setFont (Theme::font (Theme::smallFontSize + 0.5f));
@@ -152,7 +168,27 @@ namespace ez
             list.removeFromTop (2);
         }
 
+        auto content = r.reduced (20, 14);
+        titleArea = content.removeFromTop (58);
+        content.removeFromTop (14);
+
         if (auto* page = getPageComponent (current))
-            page->setBounds (r.reduced (16, 12));
+            page->setBounds (content);
+    }
+
+    std::pair<juce::String, juce::String> SetupView::describePage (Page page)
+    {
+        switch (page)
+        {
+            case Page::audioDevice: return { "Audio device", "Your sound card or interface: what plays the sound and what you record from. "
+                                                             "A smaller buffer means less delay but more work for the computer." };
+            case Page::routing:     return { "Routing", "Which inputs feed which tracks, and where the main mix goes." };
+            case Page::plugins:     return { "Plugins", "Your VST3 instruments and effects. Click Options to scan for them; each is checked "
+                                                        "in a separate process, so a broken plugin can't crash EzDAWsIt." };
+            case Page::recording:   return { "Recording", "How tracks record: inputs, levels, timing and takes." };
+            case Page::midi:        return { "MIDI & Controllers", "Keyboards, pads and knobs: what EzDAWsIt hears, the clock it sends, and controls you've linked." };
+        }
+
+        return {};
     }
 }

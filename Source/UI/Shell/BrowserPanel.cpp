@@ -1146,8 +1146,6 @@ namespace ez
         g.setFont (Theme::font (Theme::baseFontSize - 0.5f, true));
         g.drawText ("Browser", titleArea, juce::Justification::centredLeft, false);
 
-        Icons::draw (g, Icon::search, searchIconArea.toFloat().withSizeKeepingCentre (13.0f, 13.0f), Theme::textDim);
-
         g.setColour (Theme::laneSeparator);
         g.drawHorizontalLine (listTitleArea.getY() - 1, 0.0f, (float) getWidth() - 1);
         g.setColour (Theme::text);
@@ -1173,6 +1171,9 @@ namespace ez
 
     void BrowserPanel::paintOverChildren (juce::Graphics& g)
     {
+        // over the search box (its background would hide it)
+        Icons::draw (g, Icon::search, searchIconArea.toFloat().withSizeKeepingCentre (13.0f, 13.0f), Theme::textDim);
+
         // Chips sit inside the rows (on the right) rather than as corner badges: the rows are full width
         for (auto* row : categoryRows)
             if (Planned::isPlanned (*row))

@@ -55,7 +55,7 @@ namespace ez
 
         juce::Rectangle<int> logoArea, songNameArea, outputIconArea;
         juce::StringArray outputIDs;
-        juce::String lastOutputSignature;
+        juce::String lastOutputSignature { "-" };   // never matches a real signature: the first refresh always runs
 
         void refreshOutputs();
         void showSizeMenu();

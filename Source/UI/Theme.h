@@ -66,6 +66,9 @@ namespace ez::Theme
     inline const juce::Colour chipBorder   { 0xff4a5160 };
     inline const juce::Colour chipText     { 0xffd3d8e0 };
 
+    // A frozen track (rendered to audio, effects off): an icy blue
+    inline const juce::Colour frozen       { 0xff8fd3ff };
+
     // Plug-in displays: EQ band handles (one colour per band; pink, not purple, so it never reads as modulation)
     inline const juce::Colour bandColours[] { juce::Colour (0xfff5b544), juce::Colour (0xff3dd68c), juce::Colour (0xff4d9fff), juce::Colour (0xffff7ab8) };
     inline const juce::Colour keyWhite     { 0xffd8dde6 };   // a white key in the scale
@@ -190,6 +193,9 @@ namespace ez::Theme
     void drawShadow (juce::Graphics&, juce::Rectangle<float> area, float radius, int depth = 1);
 
     //==============================================================================
+    /** A command's shortcut as menus show it: the first key only, written "Ctrl+Shift+S". */
+    juce::String tidyShortcut (const juce::String& juceKeyDescription);
+
     class LookAndFeel : public juce::LookAndFeel_V4
     {
     public:

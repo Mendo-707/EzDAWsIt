@@ -25,7 +25,7 @@ namespace ez
 
         juce::String lufsText (float lufs, bool valid)
         {
-            return valid && lufs > te::LoudnessMeter::silenceFloorDb + 1.0f ? juce::String (lufs, 1) : juce::String ("-");
+            return valid && lufs > te::LoudnessMeter::silenceFloorDb + 1.0f ? juce::String (lufs, 1) : juce::String ("--.-");
         }
     }
 

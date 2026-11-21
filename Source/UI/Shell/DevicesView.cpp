@@ -6,13 +6,14 @@
 #include "../TrackMenus.h"
 #include "VocalChainCard.h"
 #include "../../Engine/VocalChain.h"
+#include "../PluginDisplays.h"
 
 namespace ez
 {
     namespace
     {
         constexpr int inspectorWidth = 200;
-        constexpr int cardWidth = 136, cardGap = 22;   // the gap holds the flow arrow
+        constexpr int cardWidth = 164, cardGap = 22;   // the gap holds the flow arrow
         constexpr int addCardWidth = 96, faderCardWidth = 108;
     }
 
@@ -62,6 +63,29 @@ namespace ez
         IconButton rightButton  { "Move later", Icon::chevronRight, {}, IconButton::Style::ghost };
         IconButton addButton    { "Add effect", Icon::plus, "Add effect", IconButton::Style::ghost };
 
+        /** A live picture of the effect (its curve), in place of the icon. */
+        void setPreview (std::unique_ptr<juce::Component> p)
+        {
+            preview = std::move (p);
+
+            if (preview != nullptr)
+                addAndMakeVisible (*preview);
+        }
+
+        /** The fader card shows the track's volume (dB) and pan (-1..1). */
+        std::function<std::pair<float, float>()> faderValues;
+
+        juce::Rectangle<int> pictureArea() const
+        {
+            auto content = getLocalBounds().reduced (10, 8);
+
+            if (kind == Kind::effect)
+                content.removeFromTop (2);
+
+            content.removeFromTop (18 + 16 + 6);
+            return content.removeFromTop (juce::jmax (0, content.getHeight() - 58));
+        }
+
         void paint (juce::Graphics& g) override
         {
             auto r = getLocalBounds().toFloat().reduced (0.5f);
@@ -108,11 +132,15 @@ namespace ez
                                                            : info.maker;
             g.drawText (subtitle, content.removeFromTop (16), juce::Justification::centredLeft, true);
 
-            // A small picture of what it is
+            // A small picture of what it is: its live curve where it has one, else an icon
             content.removeFromTop (6);
             auto picture = content.removeFromTop (juce::jmax (0, content.getHeight() - 58));
 
-            if (picture.getHeight() > 16)
+            if (kind == Kind::fader && faderValues && picture.getHeight() > 30)
+            {
+                drawFader (g, picture);
+            }
+            else if (preview == nullptr && picture.getHeight() > 16)
             {
                 g.setColour (Theme::display);
                 g.fillRoundedRectangle (picture.toFloat(), (float) Theme::cornerRadius);
@@ -140,6 +168,9 @@ namespace ez
 
         void resized() override
         {
+            if (preview != nullptr)
+                preview->setBounds (pictureArea());
+
             auto r = getLocalBounds().reduced (8);
 
             if (kind == Kind::add)
@@ -160,6 +191,48 @@ namespace ez
 
             if (openButton.isVisible())
                 openButton.setBounds (r.removeFromBottom (24));
+        }
+
+    private:
+        std::unique_ptr<juce::Component> preview;
+
+        /** The track's volume as a little fader and its pan as a line from the centre. */
+        void drawFader (juce::Graphics& g, juce::Rectangle<int> area)
+        {
+            const auto [db, pan] = faderValues();
+            auto r = area.toFloat();
+            g.setColour (Theme::display);
+            g.fillRoundedRectangle (r, (float) Theme::cornerRadius);
+            r = r.reduced (10.0f, 8.0f);
+
+            const auto text = r.removeFromBottom (14.0f);
+            g.setColour (Theme::text);
+            g.setFont (Theme::font (Theme::smallFontSize, Theme::Weight::semibold));
+            g.drawText ((db > 0.05f ? "+" : "") + juce::String (db, 1) + " dB", text, juce::Justification::centredLeft, false);
+            g.setColour (Theme::textDim);
+            g.drawText (std::abs (pan) < 0.01f ? juce::String ("C") : juce::String (juce::roundToInt (std::abs (pan) * 100.0f)) + (pan < 0 ? " L" : " R"),
+                        text, juce::Justification::centredRight, false);
+
+            // the fader: a track and a cap at the level (-60..+6 dB)
+            const auto panRow = r.removeFromBottom (12.0f);
+            const auto track = r.withSizeKeepingCentre (4.0f, r.getHeight() - 4.0f);
+            g.setColour (Theme::raised);
+            g.fillRoundedRectangle (track, 2.0f);
+            const auto position = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 66.0f);
+            const auto y = track.getBottom() - track.getHeight() * std::pow (position, 2.0f);
+            g.setColour (Theme::accent);
+            g.fillRoundedRectangle (track.withTop (y), 2.0f);
+            g.setColour (Theme::text);
+            g.fillRoundedRectangle (juce::Rectangle<float> (22.0f, 6.0f).withCentre ({ track.getCentreX(), y }), 2.0f);
+
+            // pan: a line from the centre
+            const auto mid = panRow.getCentreX();
+            const auto line = panRow.withSizeKeepingCentre (panRow.getWidth(), 3.0f);
+            g.setColour (Theme::raised);
+            g.fillRoundedRectangle (line, 1.5f);
+            g.setColour (Theme::accent);
+            const auto end = mid + pan * line.getWidth() * 0.5f;
+            g.fillRect (juce::Rectangle<float> (juce::jmin (mid, end), line.getY(), juce::jmax (2.0f, std::abs (end - mid)), line.getHeight()));
         }
     };
 
@@ -410,6 +483,16 @@ namespace ez
                 }
 
                 auto* card = chain->cards.add (new DeviceCard (DeviceCard::Kind::effect, effects.getReference (i)));
+
+                // a live picture of its curve: found again by id each time, so it never outlives the effect
+                const auto resolve = [this, t, id]() -> te::Plugin*
+                {
+                    return session.hasSong() ? session.findEffect (t, id) : nullptr;
+                };
+
+                if (auto* plugin = resolve())
+                    card->setPreview (PluginDisplays::createPreview (*plugin, resolve));
+
                 card->leftButton.setEnabled (i > 0);
                 card->rightButton.setEnabled (i < effects.size() - 1);
 
@@ -427,7 +510,8 @@ namespace ez
 
             auto* add = chain->cards.add (new DeviceCard (DeviceCard::Kind::add, {}));
             add->addButton.onClick = [this, add] { showAddEffectMenu (*add); };
-            chain->cards.add (new DeviceCard (DeviceCard::Kind::fader, {}));
+            auto* fader = chain->cards.add (new DeviceCard (DeviceCard::Kind::fader, {}));
+            fader->faderValues = [this, t = track] { return std::make_pair (session.getTrackVolumeDb (t), session.getTrackPan (t)); };
 
             for (auto* item : chain->items())
                 chain->addAndMakeVisible (item);

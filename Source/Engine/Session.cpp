@@ -2168,6 +2168,15 @@ namespace ez
         return info;
     }
 
+    te::Plugin* Session::findEffect (int trackIndex, const juce::String& id) const
+    {
+        for (auto* plugin : getEffects (trackIndex))
+            if (plugin->itemID.toString() == id)
+                return plugin;
+
+        return nullptr;
+    }
+
     std::optional<Session::DeviceInfo> Session::getInstrumentInfo (int trackIndex) const
     {
         if (auto* track = getTrack (trackIndex))
@@ -3428,6 +3437,44 @@ namespace ez
         return false;
     }
 
+    bool Session::isTrackFrozen (int i) const
+    {
+        auto* t = getTrack (i);
+        return t != nullptr && t->isFrozen (te::Track::individualFreeze);
+    }
+
+    bool Session::setTrackFrozen (int i, bool shouldBeFrozen)
+    {
+        JUCE_ASSERT_MESSAGE_THREAD
+
+        auto* t = getTrack (i);
+
+        if (t == nullptr)
+            return fail ("No such track");
+
+        if (isRecording())
+            return fail ("Stop recording before freezing or unfreezing a track");
+
+        if (shouldBeFrozen == t->isFrozen (te::Track::individualFreeze))
+            return true;
+
+        if (shouldBeFrozen && kindOf (*t) != TrackKind::normal)
+            return fail ("Buses and FX returns can't be frozen: freeze the tracks that play into them");
+
+        if (shouldBeFrozen && t->getClips().isEmpty())
+            return fail ("\"" + t->getName() + "\" has nothing to freeze yet: it has no clips");
+
+        edit->getTransport().stop (false, false);   // the render needs the engine to itself
+        beginUndoStep();   // keeps the freeze point Tracktion inserts out of the previous action's undo step
+
+        if (const auto result = t->setFrozen (shouldBeFrozen, te::Track::individualFreeze); result.failed())
+            return fail (result.getErrorMessage());
+
+        ez::log (juce::String (shouldBeFrozen ? "Froze" : "Unfroze") + " track \"" + t->getName() + "\"");
+        notifyStateChanged();
+        return true;
+    }
+
     bool Session::setTrackArmed (int i, bool shouldBeArmed)
     {
         auto* t = getTrack (i);
@@ -4245,6 +4292,20 @@ namespace ez
         {
             edit->getUndoManager().undo();
             syncBusRouting();
+
+            // Tracktion's undo removes a freeze's freeze point but keeps the track frozen: undoing a freeze unfreezes
+            for (auto* track : te::getAudioTracks (*edit))
+            {
+                bool hasFreezePoint = false;
+
+                for (auto* plugin : track->pluginList)
+                    hasFreezePoint = hasFreezePoint || dynamic_cast<te::FreezePointPlugin*> (plugin) != nullptr;
+
+                if (track->isFrozen (te::Track::individualFreeze) && ! hasFreezePoint)
+                    if (const auto r = track->setFrozen (false, te::Track::individualFreeze); r.failed())
+                        ez::log ("Could not unfreeze \"" + track->getName() + "\" after undo: " + r.getErrorMessage());
+            }
+
             notifyStateChanged();   // the tempo, key or anything else may have changed back
         }
     }

@@ -50,6 +50,14 @@ namespace ez
         void setFollowing (bool shouldFollow)   { following = shouldFollow; }   // the view pages along with the playhead
         bool loopSelection();                   // the loop region round the selected clips, loop on
         void toggleSnap();
+
+        using Tool = TimelineViewState::Tool;
+        void setTool (Tool t)                   { view.tool = t; }
+        Tool getTool() const                    { return view.tool; }
+
+        /** The grid the user chose (beats; 0 = automatic, following the zoom). */
+        void setFixedGridBeats (double beats);
+        double getFixedGridBeats() const        { return view.fixedGridBeats; }
         bool isSnapEnabled() const noexcept     { return view.snapEnabled; }
 
         // Edit actions (menus and keyboard shortcuts). Each returns false if nothing happened.

@@ -93,6 +93,7 @@ set(EZ_SOURCES
     Source/UI/PluginLayouts.h     Source/UI/PluginLayouts.cpp
     Source/UI/PluginDisplays.h    Source/UI/PluginDisplays.cpp
     Source/UI/PluginLook.h        Source/UI/PluginLook.cpp
+    Source/UI/SpectrumView.h      Source/UI/SpectrumView.cpp
     Source/UI/InterfaceScale.h      Source/UI/InterfaceScale.cpp
     Source/UI/ExportView.h          Source/UI/ExportView.cpp
     Source/UI/MasterView.h          Source/UI/MasterView.cpp

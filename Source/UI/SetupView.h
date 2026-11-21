@@ -36,7 +36,9 @@ namespace ez
         juce::OwnedArray<PageRow> rows;
         std::unique_ptr<juce::Component> audioPage, routingPage, pluginsPage, recordingPage, midiPage;
         IconButton doneButton { "Done", Icon::none, "Done", IconButton::Style::primary };
-        juce::Rectangle<int> sidebarArea, footerArea;
+        juce::Rectangle<int> sidebarArea, footerArea, titleArea;
+
+        static std::pair<juce::String, juce::String> describePage (Page);
         Page current = Page::audioDevice;
 
         juce::Component* getPageComponent (Page) const;

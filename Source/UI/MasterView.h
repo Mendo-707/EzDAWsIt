@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "SpectrumView.h"
+
 #include "../Engine/Session.h"
 #include "Widgets.h"
 
@@ -60,10 +62,11 @@ namespace ez
         std::unique_ptr<ChainRow> chainRow;
         std::unique_ptr<LoudnessPanel> loudness;
         std::unique_ptr<ReferencePanel> reference;
+        std::unique_ptr<SpectrumView> spectrum;
 
         juce::ComboBox outputBox;
         juce::StringArray outputIDs;
-        juce::String lastOutputSignature;
+        juce::String lastOutputSignature { "-" };   // never matches a real signature: the first refresh always runs
         IconButton setupButton { "Setup", Icon::sliders, "Setup" };
         IconButton exportButton { "Export", Icon::exportFile, "Export...", IconButton::Style::primary };
 

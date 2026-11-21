@@ -190,8 +190,10 @@ namespace ez
                 {
                     auto visible = getLocalBounds();
 
+                    // the viewport scrolls the headers and lanes together: its view area is in their parent's
+                    // coordinates, and the headers cover its left part
                     if (auto* viewport = findParentComponentOfClass<juce::Viewport>())
-                        visible = viewport->getViewArea();
+                        visible = viewport->getViewArea().translated (-getX(), -getY()).getIntersection (getLocalBounds());
 
                     const auto box = visible.withSizeKeepingCentre (juce::jmin (420, visible.getWidth() - 40), 74);
 
@@ -252,6 +254,17 @@ namespace ez
 
         void paintOverChildren (juce::Graphics& g) override
         {
+            // A frozen track: frosted over its clips (they play from the rendered audio until it's unfrozen)
+            for (int t = 0; t < session.getNumAudioTracks(); ++t)
+                if (session.isTrackFrozen (t))
+                {
+                    const juce::Rectangle<int> lane (0, view.topOfTrack (t), getWidth(), view.rowHeight (t) - 1);
+                    g.setColour (Theme::frozen.withAlpha (0.10f));
+                    g.fillRect (lane);
+                    g.setColour (Theme::frozen.withAlpha (0.5f));
+                    g.drawHorizontalLine (lane.getY(), 0.0f, (float) getWidth());
+                }
+
             if (rubberBand.isEmpty())
                 return;
 
@@ -664,19 +677,29 @@ namespace ez
 
         void showLaneMenu (int track, te::TimePosition time)
         {
-            enum { pasteHereId = 1, newMidiId, selectAllId, addTrackId };
+            enum { pasteHereId = 1, newMidiId, selectAllId, addTrackId, playheadId, loopBarId, zoomFitId, freezeId };
 
             juce::PopupMenu menu;
 
             if (track >= 0)
             {
-                menu.addItem (pasteHereId, "Paste here", session.hasClipsToPaste());
-                menu.addItem (newMidiId,   "New MIDI clip here");
+                menu.addSectionHeader (session.getTrackName (track));
+                menu.addItem (pasteHereId, "Paste here\tCtrl+V", session.hasClipsToPaste());
+                menu.addItem (newMidiId,   "New MIDI clip here\tDouble-click");
+
+                if (session.getTrackKind (track) == Session::TrackKind::normal)
+                    menu.addItem (freezeId, session.isTrackFrozen (track) ? "Unfreeze this track\tCtrl+Alt+F" : "Freeze this track\tCtrl+Alt+F",
+                                  ! session.isRecording());
+
                 menu.addSeparator();
             }
 
+            menu.addItem (playheadId,  "Move the playhead here");
+            menu.addItem (loopBarId,   "Loop this bar\tL");
+            menu.addSeparator();
             menu.addItem (selectAllId, "Select all clips\tCtrl+A");
-            menu.addItem (addTrackId,  "Add audio track");
+            menu.addItem (zoomFitId,   "Zoom to fit the song");
+            menu.addItem (addTrackId,  "Add audio track\tCtrl+T");
 
             menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
                                 [safeThis = juce::Component::SafePointer<Lanes> (this), track, time] (int result)
@@ -693,6 +716,19 @@ namespace ez
                                         case newMidiId:   o.report (s.createMidiClip (track, time, safeThis->oneBar (time)), "New MIDI clip"); break;
                                         case selectAllId: o.selectAll(); break;
                                         case addTrackId:  s.addAudioTrack(); break;
+                                        case playheadId:  s.setPosition (time); break;
+                                        case zoomFitId:   o.zoomToFit(); break;
+                                        case freezeId:    o.report (s.setTrackFrozen (track, ! s.isTrackFrozen (track)), "Freeze"); break;
+                                        case loopBarId:
+                                        {
+                                            // the bar under the click: from its first beat for one bar
+                                            const auto& tempo = s.getEdit()->tempoSequence;
+                                            const auto bar = s.getBarAt (tempo.toBeats (time).inBeats() + 1.0e-7).first;
+                                            const auto start = tempo.toTime (te::BeatPosition::fromBeats (s.getBarStartBeat (bar)));
+                                            s.setLoopRange (start, start + safeThis->oneBar (start));
+                                            s.setLooping (true);
+                                            break;
+                                        }
                                         default: break;
                                     }
                                 });
@@ -988,6 +1024,13 @@ namespace ez
     void TimelineView::toggleSnap()
     {
         view.snapEnabled = ! view.snapEnabled;
+    }
+
+    void TimelineView::setFixedGridBeats (double beats)
+    {
+        view.fixedGridBeats = juce::jmax (0.0, beats);
+        layoutForView();
+        repaint();
     }
 
     void TimelineView::handleWheel (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel, int xInLanes)

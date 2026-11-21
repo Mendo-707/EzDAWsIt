@@ -188,6 +188,9 @@ namespace ez
             newDevice = lastInputName;
         }
 
+        if (session.isTrackFrozen (trackIndex))
+            newDevice = "Frozen";   // its device name gives way: what matters now is that it can't be edited
+
         if (newIcon != typeIcon || newDevice != deviceText)
         {
             typeIcon = newIcon;
@@ -241,7 +244,7 @@ namespace ez
 
         if (! deviceArea.isEmpty() && deviceText.isNotEmpty())
         {
-            g.setColour (Theme::textDim);
+            g.setColour (deviceText.startsWith ("Frozen") ? Theme::frozen : Theme::textDim);
             g.setFont (Theme::font (Theme::smallFontSize));
             g.drawText (deviceText, deviceArea, juce::Justification::centredLeft, true);
         }

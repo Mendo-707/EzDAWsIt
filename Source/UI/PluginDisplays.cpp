@@ -271,6 +271,9 @@ namespace ez::PluginDisplays
 
         void label (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, juce::Justification j = juce::Justification::topRight)
         {
+            if (area.getWidth() < 170.0f)
+                return;   // a thumbnail (device cards): the caption would sit on the curve
+
             g.setColour (Theme::textDim);
             g.setFont (Theme::font (Theme::captionFontSize + 0.5f, Theme::Weight::medium));
             g.drawText (text, area.reduced (6.0f, 3.0f), j, false);
@@ -1867,6 +1870,120 @@ namespace ez::PluginDisplays
             case Type::softClip:    return std::make_unique<SoftClip> (values, ids);
             case Type::synthDelay:  return std::make_unique<Delay> (values, ids, true);
         }
+
+        return {};
+    }
+}
+
+//==============================================================================
+#include "PluginLayouts.h"
+
+namespace ez::PluginDisplays
+{
+    namespace
+    {
+        /** Reads a plugin's values for a preview: parameters, and the settings its layout lists. Read-only. */
+        class PreviewValues : public Values
+        {
+        public:
+            PreviewValues (std::function<te::Plugin*()> r, std::vector<PluginLayouts::Setting> s)
+                : resolve (std::move (r)), settings (std::move (s)) {}
+
+            float get (const juce::String& id) const override
+            {
+                auto* plugin = resolve();
+
+                if (plugin == nullptr)
+                    return 0.0f;
+
+                if (auto param = plugin->getAutomatableParameterByID (id))
+                    return param->getCurrentValue();
+
+                for (const auto& s : settings)
+                    if (s.id == id)
+                    {
+                        const auto stored = plugin->state.getProperty (juce::Identifier (id));
+
+                        if (stored.isVoid())
+                            return s.defaultValue;
+
+                        if (! s.textValues.isEmpty())
+                        {
+                            const auto index = juce::jmax (0, s.textValues.indexOf (stored.toString()));
+                            return index < (int) s.choiceValues.size() ? s.choiceValues[(size_t) index] : s.min + (float) index;
+                        }
+
+                        return (float) stored;
+                    }
+
+                return 0.0f;
+            }
+
+            juce::NormalisableRange<float> rangeOf (const juce::String& id) const override
+            {
+                if (auto* plugin = resolve())
+                    if (auto param = plugin->getAutomatableParameterByID (id))
+                        return param->valueRange;
+
+                for (const auto& s : settings)
+                    if (s.id == id)
+                        return { s.min, s.max };
+
+                return { 0.0f, 1.0f };
+            }
+
+            void beginDrag (const juce::String&) override   {}
+            void set (const juce::String&, float) override  {}
+            void endDrag (const juce::String&) override     {}
+
+            double getBpm() const override
+            {
+                auto* plugin = resolve();
+                return plugin != nullptr ? plugin->edit.tempoSequence.getBpmAt (te::TimePosition()) : 120.0;
+            }
+
+            std::optional<float> getLevel (const juce::String&) const override   { return {}; }
+
+        private:
+            std::function<te::Plugin*()> resolve;
+            std::vector<PluginLayouts::Setting> settings;
+        };
+
+        class Preview : public juce::Component, private juce::Timer
+        {
+        public:
+            Preview (std::unique_ptr<PreviewValues> v, Type type, juce::StringArray ids) : values (std::move (v))
+            {
+                display = create (type, *values, std::move (ids));
+                addAndMakeVisible (*display);
+                setInterceptsMouseClicks (false, false);   // a picture: the card's Open button edits
+                startTimerHz (10);
+            }
+
+            void setActive (bool a)     { display->setActive (a); }
+            void resized() override     { display->setBounds (getLocalBounds()); }
+
+        private:
+            std::unique_ptr<PreviewValues> values;
+            std::unique_ptr<Display> display;
+
+            void timerCallback() override   { display->refresh(); }
+        };
+    }
+
+    std::unique_ptr<juce::Component> createPreview (te::Plugin& plugin, std::function<te::Plugin*()> resolve)
+    {
+        const auto layout = PluginLayouts::forPlugin (plugin);
+
+        if (! layout.has_value())
+            return {};
+
+        for (const auto& page : layout->pages)
+            for (const auto& row : page.rows)
+                for (const auto& section : row)
+                    if (section.display.has_value())
+                        return std::make_unique<Preview> (std::make_unique<PreviewValues> (std::move (resolve), layout->settings),
+                                                          *section.display, section.displayIds);
 
         return {};
     }
