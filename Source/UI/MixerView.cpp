@@ -364,7 +364,7 @@ namespace ez
         {
             const auto reading = isMaster() ? static_cast<MeterBank::Reading> (session.getMeters().getMain())
                                             : session.getMeters().getTrack (trackIndex);
-            const auto text = reading.maxDb <= MeterBank::floorDb + 0.01f ? juce::String ("-") : juce::String (reading.maxDb, 1);
+            const auto text = reading.maxDb <= MeterBank::floorDb + 0.01f ? juce::String ("-inf") : juce::String (reading.maxDb, 1);
 
             if (peakLabel.getText() != text)
                 peakLabel.setText (text, juce::dontSendNotification);
@@ -388,7 +388,7 @@ namespace ez
             if (isMaster())
             {
                 const auto loud = session.getMeters().getMain().loudness;
-                const auto lufs = loud.shortTermValid && loud.shortTermLufs > -99.0f ? juce::String (loud.shortTermLufs, 1) + " LUFS" : juce::String ("- LUFS");
+                const auto lufs = loud.shortTermValid && loud.shortTermLufs > -99.0f ? juce::String (loud.shortTermLufs, 1) + " LUFS" : juce::String ("--.- LUFS");
 
                 if (lufs != lufsText)
                 {
@@ -436,6 +436,16 @@ namespace ez
             if (! insertsArea.isEmpty())
             {
                 drawCaption (g, "Inserts", insertsArea.withHeight (12));
+
+                if (! isMaster() && session.isTrackFrozen (trackIndex))
+                {
+                    // Frozen: its effects are rendered in, so say so where they're listed
+                    g.setColour (Theme::frozen);
+                    g.setFont (Theme::font (Theme::captionFontSize, true));
+                    g.drawText ("FROZEN", insertsArea.withHeight (12).withTrimmedRight (inserts.size() > slotsShown ? 18 : 0),
+                                juce::Justification::centredRight, false);   // left of the "+N more" count
+                }
+
                 bool firstEmpty = true;
 
                 for (int slot = 0; slot < slotsShown; ++slot)
@@ -445,13 +455,21 @@ namespace ez
 
                     if (label.isEmpty())
                     {
-                        // Empty: a shallow well; the first one says where a new effect goes
-                        g.setColour (slot == hoveredSlot ? Theme::hover.withAlpha (0.6f) : Theme::display.withAlpha (0.55f));
-                        g.fillRoundedRectangle (box, (float) Theme::smallRadius);
-                        g.setColour (slot == hoveredSlot ? Theme::border : Theme::hairline);
+                        // Empty: the first is a shallow well saying where a new effect goes; the rest stay quiet
+                        // (a faint outline) until hovered, so a strip doesn't look like a column of broken boxes
+                        const bool isAddSlot = firstEmpty;
+                        const bool hovered = slot == hoveredSlot;
+
+                        if (isAddSlot || hovered)
+                        {
+                            g.setColour (hovered ? Theme::hover.withAlpha (0.6f) : Theme::display.withAlpha (0.55f));
+                            g.fillRoundedRectangle (box, (float) Theme::smallRadius);
+                        }
+
+                        g.setColour (hovered ? Theme::border : isAddSlot ? Theme::hairline : Theme::hairline.withAlpha (0.45f));
                         g.drawRoundedRectangle (box.reduced (0.5f), (float) Theme::smallRadius, 1.0f);
 
-                        if ((std::exchange (firstEmpty, false) || slot == hoveredSlot) && box.getHeight() >= 14.0f)
+                        if ((std::exchange (firstEmpty, false) || hovered) && box.getHeight() >= 14.0f)
                         {
                             g.setColour (Theme::textFaint);
                             g.setFont (Theme::font (Theme::captionFontSize + 0.5f));

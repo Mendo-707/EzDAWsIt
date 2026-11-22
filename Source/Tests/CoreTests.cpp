@@ -27,6 +27,7 @@
 #include "../UI/ParamEditor.h"
 #include "../UI/PluginWindows.h"
 #include "../UI/Widgets.h"
+#include "../Engine/ArpeggiatorPlugin.h"
 
 namespace ez::Tests
 {
@@ -2046,6 +2047,13 @@ namespace ez::Tests
                     continue;
 
                 expect (c.category.isNotEmpty(), c.name + " has no category");
+
+                if (c.pluginType == ArpeggiatorPlugin::xmlTypeName)   // plays an instrument: this audio track has none
+                {
+                    expect (! session.addEffect (t, c, false), "the arpeggiator needs an instrument");
+                    continue;   // its own test adds it to an instrument track
+                }
+
                 const auto before = session.getEffectInfo (t).size();
                 expect (session.addEffect (t, c, false), c.name + ": " + session.getLastError());
                 expectEquals (session.getEffectInfo (t).size(), before + 1, c.name);
@@ -3259,6 +3267,179 @@ namespace ez::Tests
                 expect (! session.bounceTrackInPlace (0) && session.getLastError().contains ("unfreeze it first"), session.getLastError());
                 expect (session.setTrackFrozen (0, false), session.getLastError());
                 expectEquals (session.getNumAudioTracks(), bounceBaseline, "the refusals changed nothing");
+            }
+
+            beginTest ("Arpeggiator: each mode plays the held notes in the right order, on the grid, and stops when the keys are let go");
+            {
+                struct Run
+                {
+                    std::vector<Arpeggiator::Event> events;
+                    std::vector<int> ons() const
+                    {
+                        std::vector<int> notes;
+                        for (const auto& e : events)
+                            if (e.velocity > 0)
+                                notes.push_back (e.note);
+                        return notes;
+                    }
+                };
+
+                const auto play = [] (Arpeggiator::Settings settings, std::initializer_list<int> chord, double beats, int blocks = 1)
+                {
+                    Arpeggiator arp;
+                    Run run;
+
+                    for (auto n : chord)
+                        arp.queueInput (0, n, 100);
+
+                    const int samplesPerBeat = 4800;
+
+                    for (int b = 0; b < blocks; ++b)
+                        arp.process (beats * b / blocks, beats * (b + 1) / blocks, (int) (samplesPerBeat * beats / blocks), settings,
+                                     [&run, b, blocks, beats] (const Arpeggiator::Event& e)
+                                     {
+                                         run.events.push_back ({ e.sampleOffset + (int) (4800 * beats / blocks) * b, e.note, e.velocity });
+                                     });
+
+                    return run;
+                };
+
+                Arpeggiator::Settings s;   // 1/16, up, one octave
+                const auto upRun = play (s, { 64, 60, 67 }, 1.0);
+                expect (upRun.ons() == std::vector<int> { 60, 64, 67, 60 }, "up: low to high, four sixteenths in a beat");
+                expectEquals (upRun.events[0].sampleOffset, 0);
+                expect (upRun.events.back().sampleOffset >= 3600, "the last step lands on the fourth sixteenth");
+
+                int ons = 0;
+                bool offBeforeEachOn = true;
+                int soundingNow = 0;
+
+                for (const auto& e : upRun.events)
+                {
+                    offBeforeEachOn = offBeforeEachOn && (e.velocity == 0 || soundingNow == 0);
+                    soundingNow += e.velocity > 0 ? 1 : -1;
+                    ons += e.velocity > 0 ? 1 : 0;
+                }
+
+                expect (offBeforeEachOn, "one note at a time: each ends (at the gate) before the next starts");
+                expectEquals (ons, 4);
+
+                s.mode = Arpeggiator::down;
+                expect (play (s, { 60, 64, 67 }, 1.0).ons() == std::vector<int> { 67, 64, 60, 67 }, "down");
+                s.mode = Arpeggiator::upDown;
+                expect (play (s, { 60, 64, 67 }, 1.5).ons() == std::vector<int> { 60, 64, 67, 64, 60, 64 }, "up and down, ends not repeated");
+                s.mode = Arpeggiator::asPlayed;
+                expect (play (s, { 67, 60, 64 }, 0.75).ons() == std::vector<int> { 67, 60, 64 }, "as played");
+                s.mode = Arpeggiator::up;
+                s.octaves = 2;
+                expect (play (s, { 60, 64, 67 }, 1.5).ons() == std::vector<int> { 60, 64, 67, 72, 76, 79 }, "two octaves");
+                s.octaves = 1;
+                s.stepBeats = ArpeggiatorPlugin::stepBeatsFor (4);   // 1/8 triplets
+                expectEquals ((int) play (s, { 60 }, 1.0).ons().size(), 3, "1/8 triplets: three a beat");
+                s.stepBeats = 0.25;
+
+                // The same pattern whether a beat comes in one block or in 7 uneven ones
+                const auto oneBlock = play (s, { 60, 64, 67 }, 2.0, 1).ons();
+                expect (play (s, { 60, 64, 67 }, 2.0, 7).ons() == oneBlock, "seamless across audio blocks");
+
+                s.mode = Arpeggiator::random;
+                for (auto n : play (s, { 60, 64, 67 }, 4.0).ons())
+                    expect (n == 60 || n == 64 || n == 67, "random only plays held notes");
+                s.mode = Arpeggiator::up;
+
+                // Letting go stops it; latch keeps it going until a new chord
+                {
+                    Arpeggiator arp;
+                    std::vector<Arpeggiator::Event> events;
+                    const auto collect = [&events] (const Arpeggiator::Event& e) { events.push_back (e); };
+                    arp.queueInput (0, 60, 100);
+                    arp.process (0.0, 0.3, 1440, s, collect);
+                    expect (arp.getSoundingNote() < 0 || arp.getSoundingNote() == 60);
+                    arp.queueInput (10, 60, 0);
+                    arp.process (0.3, 1.0, 3360, s, collect);
+                    expectEquals (arp.getNumHeld(), 0);
+                    expectEquals (arp.getSoundingNote(), -1, "nothing sounds once the key is up");
+                    events.clear();
+                    arp.process (1.0, 2.0, 4800, s, collect);
+                    expect (events.empty(), "and no more steps");
+
+                    s.latch = true;
+                    arp.queueInput (0, 62, 100);
+                    arp.queueInput (5, 62, 0);
+                    arp.process (2.0, 3.0, 4800, s, collect);
+                    expectEquals (arp.getNumHeld(), 1, "latched: still held after the key is up");
+                    events.clear();
+                    arp.queueInput (0, 65, 100);   // a new chord replaces the latched one
+                    arp.process (3.0, 4.0, 4800, s, collect);
+                    bool only65 = true;
+                    for (const auto& e : events)
+                        only65 = only65 && (e.velocity == 0 || e.note == 65);
+                    expect (only65, "the new chord replaced the latched note");
+
+                    arp.process (4.0, 4.1, 480, s, collect);    // a step starts and is still sounding...
+                    expect (arp.getSoundingNote() >= 0);
+                    events.clear();
+                    arp.process (10.0, 11.0, 4800, s, collect);   // ...when the playhead jumps
+                    expect (! events.empty() && events.front().velocity == 0, "a jump ends the sounding note first");
+                    s.latch = false;
+                }
+
+                s.fixedVelocity = 90;
+                for (const auto& e : play (s, { 60 }, 1.0).events)
+                    expect (e.velocity == 0 || e.velocity == 90, "fixed velocity");
+            }
+
+            beginTest ("The arpeggiator goes just before the track's instrument (it plays it), and is refused where there's none");
+            {
+                auto& editRef = *session.getEdit();
+                int synthTrack = -1, plainTrack = -1;
+
+                for (int t = 0; t < session.getNumAudioTracks(); ++t)
+                {
+                    if (session.getTrackKind (t) != Session::TrackKind::normal)
+                        continue;
+
+                    bool hasSynth = false;
+                    for (auto* p : te::getAudioTracks (editRef)[t]->pluginList)
+                        hasSynth = hasSynth || p->isSynth();
+
+                    if (hasSynth && synthTrack < 0)
+                        synthTrack = t;
+                    else if (! hasSynth && plainTrack < 0)
+                        plainTrack = t;
+                }
+
+                Session::PluginChoice arpChoice;
+                for (const auto& c : session.getAvailableEffects())
+                    if (c.pluginType == ArpeggiatorPlugin::xmlTypeName)
+                        arpChoice = c;
+
+                expect (arpChoice.pluginType.isNotEmpty(), "listed with the effects");
+                expectEquals (Effects::categoryOf (ArpeggiatorPlugin::xmlTypeName), juce::String ("MIDI"));
+
+                if (synthTrack >= 0)
+                {
+                    expect (session.addEffect (synthTrack, arpChoice, false), session.getLastError());
+                    auto& list = te::getAudioTracks (editRef)[synthTrack]->pluginList;
+                    int arpAt = -1, synthAt = -1;
+
+                    for (int i = 0; i < list.size(); ++i)
+                    {
+                        if (dynamic_cast<ArpeggiatorPlugin*> (list[i]) != nullptr) arpAt = i;
+                        if (list[i]->isSynth() && synthAt < 0) synthAt = i;
+                    }
+
+                    expect (arpAt >= 0 && arpAt + 1 == synthAt, "right before the instrument: " + juce::String (arpAt) + " / " + juce::String (synthAt));
+                    session.undo();
+                }
+
+                if (plainTrack >= 0)
+                {
+                    const auto effectsBefore = session.getEffectNames (plainTrack);
+                    expect (! session.addEffect (plainTrack, arpChoice, false), "no instrument to play");
+                    expect (session.getLastError().contains ("instrument"), session.getLastError());
+                    expect (session.getEffectNames (plainTrack) == effectsBefore, "and nothing was added");
+                }
             }
 
             beginTest ("Presets: every built-in template opens, with all its tracks and effects");

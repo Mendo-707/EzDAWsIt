@@ -56,7 +56,8 @@ namespace ez::PluginDisplays
         ampTone,        // ids: tight, bass, mid, treble, presence
         modEnvelope,    // as envelope, in the modulation colour (the synth's mod envelopes)
         softClip,       // ids: drive (0-1): the synth's distortion
-        synthDelay      // ids: time (beats), feedback (dB), mix (0-1), crossfeed (dB: ping-pong above -100)
+        synthDelay,     // ids: time (beats), feedback (dB), mix (0-1), crossfeed (dB: ping-pong above -100)
+        arpPattern      // ids: rate (choice), mode, octaves, gate (%), velocity: what the arpeggiator plays from C-E-G
     };
 
     /** A display that redraws when the values it shows change (call refresh() from a timer). */

@@ -6,6 +6,8 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "PluginLook.h"
+#include "../Engine/Arpeggiator.h"
+#include "../Engine/ArpeggiatorPlugin.h"
 #include <complex>
 
 namespace ez::PluginDisplays
@@ -1843,6 +1845,91 @@ namespace ez::PluginDisplays
         };
     }
 
+    namespace
+    {
+        /** The arpeggiator's pattern as a little piano roll: C-E-G held, two beats (four at 1/4), drawn by
+            running the arpeggiator itself, so the picture is exactly what it plays. */
+        class ArpPattern : public Display
+        {
+        public:
+            using Display::Display;
+
+            void paint (juce::Graphics& g) override
+            {
+                drawBackground (g);
+                const auto area = plotArea().reduced (4.0f, 6.0f);
+
+                Arpeggiator::Settings s;
+                const auto rateChoice = juce::roundToInt (v (0));
+                s.stepBeats = ArpeggiatorPlugin::stepBeatsFor (rateChoice);
+                s.mode = juce::roundToInt (v (1));
+                s.octaves = juce::jlimit (1, 4, juce::roundToInt (v (2)));
+                s.gate = v (3) / 100.0f;
+                s.fixedVelocity = juce::roundToInt (v (4));
+
+                const auto beats = s.stepBeats >= 1.0 ? 4.0 : 2.0;
+                constexpr int samplesPerBeat = 1000;
+                const int total = (int) (beats * samplesPerBeat);
+
+                Arpeggiator arp;
+
+                for (auto note : { 60, 64, 67 })
+                    arp.queueInput (0, note, 100);
+
+                struct Bar { int note, start, end, velocity; };
+                std::vector<Bar> bars;
+                arp.process (0.0, beats, total, s, [&bars] (const Arpeggiator::Event& e)
+                {
+                    if (e.velocity > 0)
+                        bars.push_back ({ e.note, e.sampleOffset, -1, e.velocity });
+                    else
+                        for (auto& b : bars)
+                            if (b.note == e.note && b.end < 0)
+                                b.end = e.sampleOffset;
+                });
+
+                // One row per note it can play (the chord in each octave), low at the bottom
+                const int rows = 3 * s.octaves;
+                const auto rowOf = [] (int note)
+                {
+                    const auto octave = (note - 60) / 12;
+                    const auto inChord = note % 12 == 0 ? 0 : note % 12 == 4 ? 1 : 2;
+                    return octave * 3 + inChord;
+                };
+                const auto rowH = area.getHeight() / (float) rows;
+                const auto xFor = [&] (int sample) { return area.getX() + area.getWidth() * (float) sample / (float) total; };
+
+                for (int r = 0; r <= rows; ++r)
+                {
+                    g.setColour (r % 3 == 0 ? P::screenGridMajor : P::screenGrid);
+                    g.drawHorizontalLine (juce::roundToInt (area.getBottom() - rowH * (float) r), area.getX(), area.getRight());
+                }
+
+                for (int b = 0; b <= (int) beats; ++b)
+                {
+                    g.setColour (P::screenGridMajor);
+                    const auto x = juce::roundToInt (xFor (b * samplesPerBeat));
+                    g.drawVerticalLine (x, area.getY(), area.getBottom());
+                }
+
+                const auto c = tint (P::signal);
+
+                for (const auto& b : bars)
+                {
+                    const auto end = b.end < 0 ? total : b.end;
+                    const auto row = rowOf (b.note);
+                    auto box = juce::Rectangle<float> (xFor (b.start), area.getBottom() - rowH * (float) (row + 1),
+                                                       juce::jmax (2.0f, xFor (end) - xFor (b.start) - 1.0f), rowH).reduced (0.0f, juce::jmin (2.0f, rowH * 0.15f));
+                    g.setColour (c.withAlpha (0.35f + 0.65f * (float) b.velocity / 127.0f));
+                    g.fillRoundedRectangle (box, 2.0f);
+                }
+
+                label (g, "Holding C E G" + juce::String (s.octaves > 1 ? ", " + juce::String (s.octaves) + " octaves" : juce::String()),
+                       getLocalBounds().toFloat().reduced (6.0f, 3.0f), juce::Justification::topLeft);
+            }
+        };
+    }
+
     //==============================================================================
     std::unique_ptr<Display> create (Type type, Values& values, juce::StringArray ids)
     {
@@ -1869,6 +1956,7 @@ namespace ez::PluginDisplays
             case Type::modEnvelope: return std::make_unique<Envelope> (values, ids, Theme::Plugin::mod);
             case Type::softClip:    return std::make_unique<SoftClip> (values, ids);
             case Type::synthDelay:  return std::make_unique<Delay> (values, ids, true);
+            case Type::arpPattern:  return std::make_unique<ArpPattern> (values, ids);
         }
 
         return {};

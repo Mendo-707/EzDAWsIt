@@ -209,6 +209,9 @@ namespace ez::Screenshots
                 if (choice.pluginType == te::ExternalPlugin::xmlTypeName || choice.name == "Vocal Chain" || choice.name == "Tuner")
                     continue;   // these have editors of their own
 
+                if (choice.name == "Arpeggiator")
+                    continue;   // it needs an instrument: shot on the synth track below
+
                 if (! session.addEffect (track, choice, false))
                 {
                     ++problems;
@@ -223,6 +226,14 @@ namespace ez::Screenshots
 
             for (const auto& choice : session.getAvailableInstruments())
                 if (choice.name.startsWith ("Synth") && session.addInstrumentTrack (choice, false))
+                    if (auto* audioTrack = te::getAudioTracks (*session.getEdit()).getLast())
+                        for (auto* plugin : audioTrack->pluginList.getPlugins())
+                            if (plugin->getPluginType() == choice.pluginType)
+                                render (*plugin, choice.name);
+
+            // The arpeggiator, on the synth track just made
+            for (const auto& choice : session.getAvailableEffects())
+                if (choice.name == "Arpeggiator" && session.addEffect (session.getNumAudioTracks() - 1, choice, false))
                     if (auto* audioTrack = te::getAudioTracks (*session.getEdit()).getLast())
                         for (auto* plugin : audioTrack->pluginList.getPlugins())
                             if (plugin->getPluginType() == choice.pluginType)

@@ -57,6 +57,8 @@ set(EZ_SOURCES
     Source/Engine/SessionPresets.cpp
     Source/Engine/Dsp.h
     Source/Engine/Effects.h         Source/Engine/Effects.cpp
+    Source/Engine/Arpeggiator.h     Source/Engine/Arpeggiator.cpp
+    Source/Engine/ArpeggiatorPlugin.h Source/Engine/ArpeggiatorPlugin.cpp
     Source/Engine/PluginPresets.h   Source/Engine/PluginPresets.cpp
     Source/Engine/VocalChain.h      Source/Engine/VocalChain.cpp
     Source/Engine/Mastering.h Source/Engine/Mastering.cpp

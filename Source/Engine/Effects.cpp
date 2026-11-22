@@ -3,6 +3,7 @@
 */
 
 #include "Effects.h"
+#include "ArpeggiatorPlugin.h"
 #include "VocalChain.h"
 #include "Mastering.h"
 
@@ -524,6 +525,7 @@ namespace ez
         pm.createBuiltInType<UtilityPlugin>();
         pm.createBuiltInType<AmpPlugin>();
         pm.createBuiltInType<TunerPlugin>();
+        pm.createBuiltInType<ArpeggiatorPlugin>();
         pm.createBuiltInType<VocalChainPlugin>();
         pm.createBuiltInType<MasteringChainPlugin>();   // the master's own (Master view), never in the effect lists
         pm.createBuiltInType<ReferencePlugin>();
@@ -531,7 +533,7 @@ namespace ez
 
     juce::StringArray Effects::categories()
     {
-        return { "Chains", "Guitar & bass", "Dynamics", "EQ & Filter", "Space", "Colour", "Pitch", "Modulation", "Utility" };
+        return { "Chains", "MIDI", "Guitar & bass", "Dynamics", "EQ & Filter", "Space", "Colour", "Pitch", "Modulation", "Utility" };
     }
 
     juce::String Effects::categoryOf (const juce::String& type)
@@ -548,6 +550,7 @@ namespace ez
         if (type == UtilityPlugin::xmlTypeName)                                                return "Utility";
         if (type == VocalChainPlugin::xmlTypeName)                                             return "Chains";
         if (type == AmpPlugin::xmlTypeName || type == TunerPlugin::xmlTypeName)               return "Guitar & bass";
+        if (type == ArpeggiatorPlugin::xmlTypeName)                                            return "MIDI";
         return {};
     }
 }

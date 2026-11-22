@@ -3,6 +3,7 @@
 */
 
 #include "PluginLayouts.h"
+#include "../Engine/ArpeggiatorPlugin.h"
 #include "../Engine/Effects.h"
 
 namespace ez::PluginLayouts
@@ -486,6 +487,16 @@ namespace ez::PluginLayouts
             if (type == TremoloPlugin::xmlTypeName)
                 return single (480, "Moves the level (tremolo) or the sound left and right (pan)", { section ("Tremolo", D::wobble, { "rate", "depth", "mode" },
                     { buttons ("mode", "Mode"), big ("rate", "Rate"), big ("depth", "Depth") }, 2, 70) });
+
+            if (type == ArpeggiatorPlugin::xmlTypeName)
+            {
+                auto pattern = section ("Pattern", D::arpPattern, { "rate", "mode", "octaves", "gate", "velocity" },
+                                        { buttons ("mode", "Mode"), menu ("rate", "Rate"), big ("octaves", "Octaves"), big ("gate", "Gate"),
+                                          big ("velocity", "Velocity"), toggle ("latch", "Latch") }, 3, 110);
+                auto l = single (560, "Plays the notes you hold one at a time, in time with the song", { pattern });
+                l.planned = { "Swing", "Step velocities", "Repeat each note" };
+                return l;
+            }
 
             if (type == UtilityPlugin::xmlTypeName)
                 return single (500, "Gain, stereo width, mono and phase", { section ("Utility", D::stereo, { "width", "mono", "flipl", "flipr" },

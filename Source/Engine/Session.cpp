@@ -6,6 +6,7 @@
 #include "Effects.h"
 #include "MidiLearn.h"
 #include "VocalChain.h"
+#include "ArpeggiatorPlugin.h"
 #include "AudioEngine.h"
 #include "../Core/AppPaths.h"
 
@@ -2009,6 +2010,7 @@ namespace ez
         add ("Vocal Chain",  VocalChainPlugin::xmlTypeName);
         add ("Amp",          AmpPlugin::xmlTypeName);
         add ("Tuner",        TunerPlugin::xmlTypeName);
+        add ("Arpeggiator",  ArpeggiatorPlugin::xmlTypeName);
 
         for (const auto& description : audioEngine.getEngine().getPluginManager().knownPluginList.getTypes())
             if (! description.isInstrument)
@@ -2093,6 +2095,19 @@ namespace ez
                 index = i;
                 break;
             }
+        }
+
+        // MIDI effects (the arpeggiator) play the instrument, so they go just before it
+        if (dynamic_cast<ArpeggiatorPlugin*> (plugin.get()) != nullptr)
+        {
+            index = -1;
+
+            for (int i = 0; i < track->pluginList.size() && index < 0; ++i)
+                if (track->pluginList[i]->isSynth())
+                    index = i;
+
+            if (index < 0)
+                return fail ("The arpeggiator plays an instrument: add one to this track first (Instruments in the browser)");
         }
 
         const auto before = track->pluginList.size();
