@@ -254,6 +254,21 @@ namespace ez
 
         void paintOverChildren (juce::Graphics& g) override
         {
+            // Tracks you can't hear (muted, or another track is soloed) fade back, as in every DAW
+            {
+                bool anySolo = false;
+
+                for (int t = 0; t < session.getNumAudioTracks() && ! anySolo; ++t)
+                    anySolo = session.isTrackSoloed (t);
+
+                for (int t = 0; t < session.getNumAudioTracks(); ++t)
+                    if (session.isTrackMuted (t) || (anySolo && ! session.isTrackSoloed (t)))
+                    {
+                        g.setColour (Theme::background.withAlpha (0.55f));
+                        g.fillRect (0, view.topOfTrack (t), getWidth(), view.rowHeight (t) - 1);
+                    }
+            }
+
             // A frozen track: frosted over its clips (they play from the rendered audio until it's unfrozen)
             for (int t = 0; t < session.getNumAudioTracks(); ++t)
                 if (session.isTrackFrozen (t))
@@ -517,7 +532,7 @@ namespace ez
         {
             enum { cutId = 1, copyId, pasteId, duplicateId, splitId, deleteId, renameId, muteId, colourBase = 100, takeBase = 200,
                    normaliseId = 300, reverseId, followTempoId, shortFadesId, loopTheseId, fadeInBase = 320, fadeOutBase = 340, gainBase = 360, transposeBase = 400,
-                   editNotesId = 500, quantiseBase = 510, noteShiftBase = 530, freezeTrackId = 550 };
+                   editNotesId = 500, quantiseBase = 510, noteShiftBase = 530, freezeTrackId = 550, bounceTrackId };
 
             struct NamedColour { const char* name; juce::Colour colour; };
             static const NamedColour colours[] = {
@@ -635,6 +650,7 @@ namespace ez
             {
                 menu.addSeparator();
                 menu.addItem (freezeTrackId, session.isTrackFrozen (track) ? "Unfreeze the track\tCtrl+Alt+F" : "Freeze the track (save CPU)\tCtrl+Alt+F");
+                menu.addItem (bounceTrackId, "Bounce the track in place (to audio)\tCtrl+Alt+B", ! session.isTrackFrozen (track));
             }
 
             menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
@@ -696,6 +712,12 @@ namespace ez
                                         {
                                             const auto track = te::getAudioTracks (clipPtr->edit).indexOf (dynamic_cast<te::AudioTrack*> (clipPtr->getClipTrack()));
                                             o.report (s.setTrackFrozen (track, ! s.isTrackFrozen (track)), "Freeze");
+                                            break;
+                                        }
+                                        case bounceTrackId:
+                                        {
+                                            const auto track = te::getAudioTracks (clipPtr->edit).indexOf (dynamic_cast<te::AudioTrack*> (clipPtr->getClipTrack()));
+                                            o.report (s.bounceTrackInPlace (track), "Bounce");
                                             break;
                                         }
                                         default:
@@ -762,7 +784,7 @@ namespace ez
 
         void showLaneMenu (int track, te::TimePosition time)
         {
-            enum { pasteHereId = 1, newMidiId, selectAllId, addTrackId, playheadId, loopBarId, zoomFitId, freezeId };
+            enum { pasteHereId = 1, newMidiId, selectAllId, addTrackId, playheadId, loopBarId, zoomFitId, freezeId, bounceId };
 
             juce::PopupMenu menu;
 
@@ -773,8 +795,12 @@ namespace ez
                 menu.addItem (newMidiId,   "New MIDI clip here\tDouble-click");
 
                 if (session.getTrackKind (track) == Session::TrackKind::normal)
+                {
                     menu.addItem (freezeId, session.isTrackFrozen (track) ? "Unfreeze this track\tCtrl+Alt+F" : "Freeze this track\tCtrl+Alt+F",
-                                  ! session.isRecording());
+                                  ! session.isRecording() && (session.isTrackFrozen (track) || session.trackHasClips (track)));
+                    menu.addItem (bounceId, "Bounce this track in place\tCtrl+Alt+B",
+                                  ! session.isRecording() && session.trackHasClips (track) && ! session.isTrackFrozen (track));
+                }
 
                 menu.addSeparator();
             }
@@ -804,6 +830,7 @@ namespace ez
                                         case playheadId:  s.setPosition (time); break;
                                         case zoomFitId:   o.zoomToFit(); break;
                                         case freezeId:    o.report (s.setTrackFrozen (track, ! s.isTrackFrozen (track)), "Freeze"); break;
+                                        case bounceId:    o.report (s.bounceTrackInPlace (track), "Bounce"); break;
                                         case loopBarId:
                                         {
                                             // the bar under the click: from its first beat for one bar

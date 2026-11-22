@@ -3476,6 +3476,105 @@ namespace ez
         return true;
     }
 
+    bool Session::trackHasClips (int i) const
+    {
+        auto* t = getTrack (i);
+        return t != nullptr && ! t->getClips().isEmpty();
+    }
+
+    bool Session::bounceTrackInPlace (int i)
+    {
+        JUCE_ASSERT_MESSAGE_THREAD
+
+        auto* t = getTrack (i);
+
+        if (t == nullptr)
+            return fail ("No such track");
+
+        const auto name = t->getName();
+
+        if (isRecording())
+            return fail ("Stop recording before bouncing a track");
+
+        if (kindOf (*t) != TrackKind::normal)
+            return fail ("Buses and FX returns can't be bounced: bounce the tracks that play into them");
+
+        if (t->isFrozen (te::Track::individualFreeze))
+            return fail ("\"" + name + "\" is frozen: unfreeze it first (Ctrl+Alt+F), then bounce");
+
+        const auto& clips = t->getClips();
+
+        if (clips.isEmpty())
+            return fail ("\"" + name + "\" has nothing to bounce yet: it has no clips");
+
+        auto start = clips.getFirst()->getPosition().getStart();
+        auto end = clips.getFirst()->getPosition().getEnd();
+
+        for (auto* c : clips)
+        {
+            start = juce::jmin (start, c->getPosition().getStart());
+            end = juce::jmax (end, c->getPosition().getEnd());
+        }
+
+        const auto range = te::TimeRange (start, end + te::TimeDuration::fromSeconds (2.0));   // reverb and delay ring out
+
+        const auto folder = songFile.getParentDirectory().getChildFile (bouncesFolderName);
+
+        if (! folder.createDirectory().wasOk())
+            return fail ("Couldn't make the Bounces folder in " + songFile.getParentDirectory().getFullPathName());
+
+        const auto file = folder.getNonexistentChildFile (juce::File::createLegalFileName (name + " bounce"), ".wav", false);
+
+        auto& engine = audioEngine.getEngine();
+        auto& devices = engine.getDeviceManager();
+        edit->getTransport().stop (false, false);   // the render needs the engine to itself
+
+        te::Renderer::Parameters render (*edit);
+        render.destFile = file;
+        render.audioFormat = engine.getAudioFileFormatManager().getWavFormat();
+        render.bitDepth = 24;
+        render.sampleRateForAudio = devices.getSampleRate() > 7000.0 ? devices.getSampleRate() : 48000.0;
+        render.blockSizeForAudio = devices.getBlockSize() > 0 ? devices.getBlockSize() : 512;
+        render.time = range;
+        render.usePlugins = true;
+        render.useMasterPlugins = false;   // the master chain stays on the master, not baked into a track
+        render.canRenderInMono = false;    // keeps the track's pan
+        render.tracksToDo = te::toBitSet ({ t });
+
+        juce::File rendered;
+        {
+            te::Track::Array soloed;
+            soloed.add (t);
+            const te::FreezePointPlugin::ScopedTrackSoloIsolator isolator (*edit, soloed);   // heard even if another track is soloed
+            rendered = te::Renderer::renderToFile ("Bouncing " + name, render);
+        }
+
+        if (rendered == juce::File() || rendered.getSize() <= 0)
+            return fail ("Couldn't bounce \"" + name + "\": the render made no audio");
+
+        beginUndoStep();
+        auto bounced = edit->insertNewAudioTrack (te::TrackInsertPoint (*t, false), nullptr);
+
+        if (bounced == nullptr)
+            return fail ("Couldn't add a track for the bounce");
+
+        bounced->setName (makeUniqueTrackName (name + " (bounced)"));
+        bounced->setColour (t->getColour());
+
+        if (! insertAudioFile (rendered, *bounced, range.getStart()))
+        {
+            edit->deleteTrack (bounced.get());
+            return false;   // insertAudioFile said why
+        }
+
+        // Kept as it was, silent. Through the undo manager (Track::setMute isn't undoable), so one undo
+        // removes the bounce and brings the original back
+        t->state.setProperty (te::IDs::mute, true, &edit->getUndoManager());
+        ez::log ("Bounced track \"" + name + "\" to " + rendered.getFileName());
+        notifyStateChanged();
+        return true;
+    }
+
     bool Session::setTrackArmed (int i, bool shouldBeArmed)
     {
         auto* t = getTrack (i);

@@ -424,4 +424,42 @@ namespace ez
         g.drawText (value, column, juce::Justification::centredLeft, false);
         return width;
     }
+
+    //==============================================================================
+    ModalBackdrop::ModalBackdrop()
+    {
+        setInterceptsMouseClicks (false, false);
+        setAccessible (false);
+        startTimerHz (30);
+    }
+
+    bool ModalBackdrop::isDialogOpen()
+    {
+        auto* modal = juce::Component::getCurrentlyModalComponent();
+        return dynamic_cast<juce::AlertWindow*> (modal) != nullptr || dynamic_cast<juce::DialogWindow*> (modal) != nullptr;
+    }
+
+    void ModalBackdrop::timerCallback()
+    {
+        const auto target = isDialogOpen() ? 1.0f : 0.0f;
+
+        if (juce::approximatelyEqual (alpha, target))
+            return;
+
+        alpha = target > alpha ? juce::jmin (target, alpha + 0.25f) : juce::jmax (target, alpha - 0.25f);   // about 130 ms
+
+        if (alpha > 0.0f && ! isVisible())
+        {
+            setVisible (true);
+            toFront (false);
+        }
+
+        setVisible (alpha > 0.0f);
+        repaint();
+    }
+
+    void ModalBackdrop::paint (juce::Graphics& g)
+    {
+        g.fillAll (juce::Colours::black.withAlpha (0.45f * alpha));
+    }
 }

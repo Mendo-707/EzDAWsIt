@@ -104,6 +104,8 @@ namespace ez
                                                                  detailPanel.get(), statusBar.get() })
             addAndMakeVisible (c);
 
+        addChildComponent (backdrop);
+
         // Buttons that run a command: their tooltip is the command's description, which names the shortcut
         // already (JUCE would add it again, as "[ctrl + Z]")
         std::function<void (juce::Component&)> tooltipsFromCommands = [this, &tooltipsFromCommands] (juce::Component& c)
@@ -181,6 +183,8 @@ namespace ez
         if (tour != nullptr)
             tour->setBounds (getLocalBounds());
 
+        backdrop.setBounds (getLocalBounds());
+
         // The browser gives way first on a narrow window: the timeline needs the width most
         const auto wasVisible = browser->isVisible();
         browser->setVisible (browserVisible && hasRoomForBrowser());
@@ -222,7 +226,7 @@ namespace ez
                              renameTrack, duplicateTrack, deleteTrack, moveTrackUp, moveTrackDown, previousTrack, nextTrack, toggleFollow, saveSongAs, songMenu, addBus, addFxReturn, routeToNewBus, toggleSends,
                              toggleAutomationLanes, toggleAutomationWrite, toggleAutomationRead,
                              interfaceBigger, interfaceSmaller, interfaceAutomatic,
-                             muteTrack, soloTrack, armTrack, freezeTrack, exportSong, focusSearch,
+                             muteTrack, soloTrack, armTrack, freezeTrack, bounceTrack, exportSong, focusSearch,
                              selectTool, splitTool, eraseTool, gridMenu });
     }
 
@@ -682,6 +686,17 @@ namespace ez
                 break;
             }
 
+            case CommandIDs::bounceTrack:
+            {
+                const auto t = timeline.getFocusedTrack();
+                info.setInfo ("Bounce track in place",
+                              "Bounce in place: render the highlighted track to audio on a new track below it, and mute the original "
+                              "(Ctrl+Alt+B)", "Track", 0);
+                info.addDefaultKeypress ('b', cmd | ModifierKeys::altModifier);
+                info.setActive (hasSong && ! session.isRecording() && session.trackHasClips (t) && ! session.isTrackFrozen (t));
+                break;
+            }
+
             case CommandIDs::armTrack:
                 info.setInfo ("Arm track", "Arm or disarm the highlighted track for recording (Shift+R)", "Track", 0);
                 info.addDefaultKeypress ('r', ModifierKeys::shiftModifier);
@@ -926,6 +941,28 @@ namespace ez
             case CommandIDs::gridMenu:
                 showGridMenu();
                 return true;
+
+            case CommandIDs::bounceTrack:
+            {
+                const auto t = timeline.getFocusedTrack();
+
+                if (! juce::isPositiveAndBelow (t, session.getNumAudioTracks()))
+                    return true;
+
+                const auto name = session.getTrackName (t);
+
+                if (session.bounceTrackInPlace (t))
+                {
+                    timeline.setFocusedTrack (t + 1);
+                    session.showHint (name + " bounced to audio below it; the original is muted (Ctrl+Z to undo)");
+                }
+                else
+                {
+                    session.showHint (session.getLastError());
+                }
+
+                return true;
+            }
 
             case CommandIDs::freezeTrack:
             {

@@ -311,6 +311,14 @@ namespace ez
             Unfreeze (the same command) to edit it again. Not an undo step, as in other DAWs; refuses while
             recording, for buses, and for empty tracks. */
         bool setTrackFrozen (int trackIndex, bool);
+
+        /** Bounce in place: renders the track (instrument, effects, fader; not the master chain) from its first
+            clip to its last plus a 2 s tail, puts the audio on a new track right below it, and mutes the
+            original (kept, so it can be edited and bounced again). One undo step. The audio goes in the song's
+            "Bounces" folder. Returns false, with a reason, for buses, empty or frozen tracks, or while recording. */
+        bool bounceTrackInPlace (int trackIndex);
+        bool trackHasClips (int trackIndex) const;   // something to freeze or bounce
+        static constexpr const char* bouncesFolderName = "Bounces";
         bool isTrackFrozen (int trackIndex) const;
         bool setTrackArmed (int trackIndex, bool);     // fails if the track has no input
         /** Volume and pan. When automated (and automation is on) the getters give what the lane says now,

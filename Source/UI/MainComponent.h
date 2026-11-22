@@ -21,6 +21,7 @@
 #include "MasterView.h"
 #include "Shell/StatusBar.h"
 #include "Shell/TransportBar.h"
+#include "Widgets.h"
 
 namespace ez
 {
@@ -75,6 +76,7 @@ namespace ez
         std::unique_ptr<juce::FileChooser> fileChooser;
         std::unique_ptr<juce::DocumentWindow> tunerWindow, shortcutsWindow;
         std::unique_ptr<juce::Component> tour;
+        ModalBackdrop backdrop;   // dims the window behind dialogs
 
         /** Easy | Pro changed: what shows depends on it. */
         struct ViewModeListener : public juce::ChangeListener

@@ -32,6 +32,20 @@ namespace ez
 
     //==============================================================================
     /** A slider whose right-click opens a menu (onMenu) instead of starting a drag. */
+    /** Dims the window while a dialog is open (fades in and out), so the dialog reads as the thing to answer.
+        Ignores popup menus. Never takes clicks: the dialog is modal anyway. */
+    class ModalBackdrop : public juce::Component, private juce::Timer
+    {
+    public:
+        ModalBackdrop();
+        void paint (juce::Graphics&) override;
+        static bool isDialogOpen();
+
+    private:
+        void timerCallback() override;
+        float alpha = 0.0f;
+    };
+
     class MenuSlider : public juce::Slider
     {
     public:

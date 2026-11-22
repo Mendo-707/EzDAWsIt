@@ -243,6 +243,8 @@ namespace ez::Theme
 
         // Messages and questions
         void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+        int getAlertBoxWindowFlags() override;   // semi-transparent: the rounded corners show the song, not black
+        void drawButtonText (juce::Graphics&, juce::TextButton&, bool isMouseOverButton, bool isButtonDown) override;
         int getAlertWindowButtonHeight() override               { return buttonHeight + 4; }
         juce::Font getAlertWindowTitleFont() override           { return font (titleFontSize + 2.5f, Weight::semibold); }
         juce::Font getAlertWindowMessageFont() override         { return font (baseFontSize + 1.0f); }

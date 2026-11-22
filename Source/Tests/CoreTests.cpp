@@ -26,6 +26,7 @@
 #include "../UI/PluginLook.h"
 #include "../UI/ParamEditor.h"
 #include "../UI/PluginWindows.h"
+#include "../UI/Widgets.h"
 
 namespace ez::Tests
 {
@@ -547,6 +548,17 @@ namespace ez::Tests
                     bank.analyseSamples (nullptr, 0, 48000.0, 1.0f);   // a second of nothing
                     expectWithinAbsoluteError (bank.getSpectrum()[(size_t) loudest], peak - 20.0f, 0.5f);
                 }
+            }
+
+            beginTest ("The window dims behind a dialog, and only while one is open (not for menus or no dialog)");
+            {
+                expect (! ModalBackdrop::isDialogOpen(), "nothing open at the start");
+                juce::AlertWindow dialog ("Test dialog", "Is the window dimmed?", juce::MessageBoxIconType::NoIcon);
+                dialog.addButton ("OK", 1);
+                dialog.enterModalState (false);
+                expect (ModalBackdrop::isDialogOpen(), "a modal dialog dims the window");
+                dialog.exitModalState (0);
+                expect (! ModalBackdrop::isDialogOpen(), "closing it un-dims it");
             }
 
             beginTest ("The app's UIBehaviour runs Tracktion's offline jobs to the end (without it, freezing rendered nothing)");
@@ -3185,6 +3197,68 @@ namespace ez::Tests
                 expect (session.isTrackFrozen (0));
                 expect (session.getEffectNames (0) == effectsBefore, "the freeze point isn't one of the user's effects (it showed as FX 3)");
                 expect (session.setTrackFrozen (0, false), session.getLastError());
+            }
+
+            beginTest ("Bounce in place: the drums become audio on a new track below, the original is muted, one undo puts it back");
+            {
+                auto& editRef = *session.getEdit();
+                const auto bounceBaseline = session.getNumAudioTracks();
+                const auto drumsName = session.getTrackName (0);
+
+                expect (session.bounceTrackInPlace (0), session.getLastError());
+                expectEquals (session.getNumAudioTracks(), bounceBaseline + 1, "one new track");
+                expect (te::getAudioTracks (editRef)[0]->isMuted (false), "the original is muted, not deleted");
+                expect (session.getTrackName (1).contains ("(bounced)"), session.getTrackName (1));
+
+                const auto& bouncedClips = te::getAudioTracks (editRef)[1]->getClips();
+                expectEquals (bouncedClips.size(), 1);
+
+                if (auto* wave = dynamic_cast<te::WaveAudioClip*> (bouncedClips.getFirst()))
+                {
+                    const auto file = wave->getOriginalFile();
+                    expect (file.getParentDirectory().getFileName() == Session::bouncesFolderName, file.getFullPathName());
+                    expect (wave->getPosition().getLength().inSeconds() >= 4 * 4 * 60.0 / 90.0, "the four bars and a tail");
+
+                    juce::AudioFormatManager formats;
+                    formats.registerBasicFormats();
+
+                    if (std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file)); reader != nullptr)
+                    {
+                        juce::Range<float> levels[2];
+                        reader->readMaxLevels (0, reader->lengthInSamples, levels, (int) juce::jmin (2u, reader->numChannels));
+                        expect (levels[0].getEnd() > 0.05f, "the bounce has the beat in it, not silence");
+                    }
+                    else
+                    {
+                        expect (false, "the bounced file can't be read");
+                    }
+                }
+                else
+                {
+                    expect (false, "the bounce is an audio clip");
+                }
+
+                session.undo();
+                expectEquals (session.getNumAudioTracks(), bounceBaseline, "undo removes the bounce");
+                expect (! te::getAudioTracks (editRef)[0]->isMuted (false), "and unmutes the original");
+                expectEquals (session.getTrackName (0), drumsName);
+
+                int emptyTrack = -1, returnTrack = -1;
+
+                for (int t = 0; t < session.getNumAudioTracks(); ++t)
+                {
+                    if (session.getTrackKind (t) != Session::TrackKind::normal)
+                        returnTrack = returnTrack < 0 ? t : returnTrack;
+                    else if (te::getAudioTracks (editRef)[t]->getClips().isEmpty())
+                        emptyTrack = emptyTrack < 0 ? t : emptyTrack;
+                }
+
+                expect (! session.bounceTrackInPlace (emptyTrack) && session.getLastError().contains ("nothing to bounce"), session.getLastError());
+                expect (! session.bounceTrackInPlace (returnTrack) && session.getLastError().contains ("can't be bounced"), session.getLastError());
+                expect (session.setTrackFrozen (0, true), session.getLastError());
+                expect (! session.bounceTrackInPlace (0) && session.getLastError().contains ("unfreeze it first"), session.getLastError());
+                expect (session.setTrackFrozen (0, false), session.getLastError());
+                expectEquals (session.getNumAudioTracks(), bounceBaseline, "the refusals changed nothing");
             }
 
             beginTest ("Presets: every built-in template opens, with all its tracks and effects");

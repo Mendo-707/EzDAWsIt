@@ -150,6 +150,9 @@ namespace ez::CommandIDs
         selectTool,
         splitTool,
         eraseTool,
-        gridMenu
+        gridMenu,
+
+        // Tracks (later additions)
+        bounceTrack
     };
 }

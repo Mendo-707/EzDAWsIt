@@ -151,12 +151,29 @@ namespace ez::Theme
         setColour (juce::DocumentWindow::textColourId, text);
     }
 
+    namespace
+    {
+        /** The action button of a dialog (its first: Create, Save, Rename...) when there's a choice to make. */
+        bool isPrimaryDialogButton (const juce::Button& button)
+        {
+            if (auto* alert = dynamic_cast<juce::AlertWindow*> (button.getParentComponent()))
+                return alert->getNumButtons() > 1 && alert->getButton (0) == &button;
+
+            return false;
+        }
+    }
+
     void LookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour,
                                             bool isMouseOverButton, bool isButtonDown)
     {
         auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
         const bool on = button.getToggleState();
         auto fill = on ? button.findColour (juce::TextButton::buttonOnColourId) : backgroundColour;
+        const bool primary = isPrimaryDialogButton (button);
+
+        if (primary)
+            fill = accent.darker (0.15f);   // the dialog's action stands out from Cancel
+
         const auto radius = juce::jmin ((float) cornerRadius, bounds.getHeight() * 0.3f);
 
         if (isButtonDown)            fill = fill.brighter (0.12f);
@@ -175,7 +192,7 @@ namespace ez::Theme
             g.fillRoundedRectangle (bounds.withHeight (bounds.getHeight() * 0.5f), radius);
         }
 
-        const auto outline = on ? button.findColour (juce::TextButton::buttonOnColourId) == activeFill ? accent
+        const auto outline = primary ? accent : on ? button.findColour (juce::TextButton::buttonOnColourId) == activeFill ? accent
                                                                                                        : button.findColour (juce::TextButton::buttonOnColourId).brighter (0.2f)
                                 : isMouseOverButton ? border.brighter (0.12f) : border;
         g.setColour (outline.withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.5f));
@@ -408,7 +425,13 @@ namespace ez::Theme
         g.drawRoundedRectangle (bounds, (float) cornerRadius, 1.0f);
     }
 
-    void LookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>& textArea, juce::TextLayout& layout)
+    int LookAndFeel::getAlertBoxWindowFlags()
+    {
+        return juce::ComponentPeer::windowAppearsOnTaskbar | juce::ComponentPeer::windowHasDropShadow
+             | juce::ComponentPeer::windowIsSemiTransparent;
+    }
+
+    void LookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>&, juce::TextLayout&)
     {
         const auto bounds = alert.getLocalBounds().toFloat();
         g.setColour (alert.findColour (juce::AlertWindow::backgroundColourId));
@@ -417,12 +440,38 @@ namespace ez::Theme
         g.drawRoundedRectangle (bounds.reduced (0.5f), (float) windowRadius, 1.0f);
 
         // A thin accent line along the top: the message is from EzDAWsIt, not a system dialog
-        g.setColour (alert.getAlertType() == juce::MessageBoxIconType::WarningIcon ? warning : accent);
+        const auto warn = alert.getAlertType() == juce::MessageBoxIconType::WarningIcon;
+        g.setColour (warn ? warning : accent);
         g.fillRoundedRectangle (bounds.withHeight (3.0f).reduced ((float) windowRadius, 0.0f), 1.5f);
 
-        g.setColour (alert.findColour (juce::AlertWindow::textColourId));
-        layout.draw (g, textArea.toFloat().withY (24.0f).withHeight ((float) alert.getHeight() - (float) getAlertWindowButtonHeight() - 30.0f)
-                                    .withX (bounds.getX() + 20.0f).withWidth (bounds.getWidth() - 40.0f));
+        // Title and message left-aligned, like the fields and labels under them (JUCE centres them)
+        // (AlertWindow keeps its message private; its description is "<title>. <message>")
+        const auto message = alert.getDescription().fromFirstOccurrenceOf (alert.getName() + ". ", false, false);
+        juce::AttributedString words;
+        words.append (alert.getName(), getAlertWindowTitleFont(), alert.findColour (juce::AlertWindow::textColourId));
+
+        if (message.isNotEmpty())
+            words.append ("\n\n" + message, getAlertWindowMessageFont(), textDim.brighter (0.25f));
+
+        words.setJustification (juce::Justification::topLeft);
+        // JUCE places text boxes and combos across the middle 80%: start the words on the same edge
+        const auto left = juce::jmax (20.0f, bounds.getWidth() * 0.1f);
+        juce::TextLayout layout;
+        layout.createLayout (words, bounds.getWidth() - 2.0f * left);
+        layout.draw (g, juce::Rectangle<float> (left, 22.0f, bounds.getWidth() - 2.0f * left, bounds.getHeight() - 22.0f));
+    }
+
+    void LookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool isMouseOverButton, bool isButtonDown)
+    {
+        if (! isPrimaryDialogButton (button))
+        {
+            juce::LookAndFeel_V4::drawButtonText (g, button, isMouseOverButton, isButtonDown);
+            return;
+        }
+
+        g.setFont (font (baseFontSize, Weight::semibold));
+        g.setColour (juce::Colours::white.withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.5f));
+        g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (6, 2), juce::Justification::centred, 1);
     }
 
     void LookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool isMouseOverButton, bool isButtonDown)

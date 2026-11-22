@@ -234,7 +234,7 @@ namespace ez::TrackMenus
     void showTrackMenu (Session& session, int trackIndex, Callbacks callbacks)
     {
         enum { renameId = 1, duplicateId, deleteId, moveUpId, moveDownId, newBusFromId, addBusId, tunerId, stopDuckId,
-               muteId, soloId, armId, freezeId, duckBase = 700,
+               muteId, soloId, armId, freezeId, bounceId, duckBase = 700,
                colourBase = 100, outputBase = 200, addReturnBase = 500, sendBase = 1000, sendStride = 16, presetBase = 10000 };
 
         const auto& colours = getTrackColours();
@@ -269,7 +269,9 @@ namespace ez::TrackMenus
             addWithKey (soloId, "Solo", "S");
             addWithKey (armId, session.isTrackArmed (trackIndex) ? "Disarm" : "Arm for recording", "Shift+R");
             addWithKey (freezeId, session.isTrackFrozen (trackIndex) ? "Unfreeze (edit it again)" : "Freeze (render it, save CPU)", "Ctrl+Alt+F",
-                        ! session.isRecording());
+                        ! session.isRecording() && (session.isTrackFrozen (trackIndex) || session.trackHasClips (trackIndex)));
+            addWithKey (bounceId, "Bounce in place (to audio)", "Ctrl+Alt+B",
+                        ! session.isRecording() && session.trackHasClips (trackIndex) && ! session.isTrackFrozen (trackIndex));
         }
 
         for (int i = 0; i < (int) colours.size(); ++i)
@@ -352,6 +354,7 @@ namespace ez::TrackMenus
                 case soloId:      session.setTrackSoloed (t, ! session.isTrackSoloed (t)); break;
                 case armId:       ok = session.setTrackArmed (t, ! session.isTrackArmed (t)); break;
                 case freezeId:    ok = session.setTrackFrozen (t, ! session.isTrackFrozen (t)); break;
+                case bounceId:    ok = session.bounceTrackInPlace (t); break;
                 case deleteId:    ok = session.deleteTrack (t); break;   // undoable, so no "are you sure?"
                 case moveUpId:    ok = session.moveTrack (t, t - 1); if (ok && callbacks.moved) callbacks.moved (t - 1); break;
                 case moveDownId:  ok = session.moveTrack (t, t + 1); if (ok && callbacks.moved) callbacks.moved (t + 1); break;
