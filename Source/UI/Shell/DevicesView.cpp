@@ -127,7 +127,7 @@ namespace ez
             g.setColour (Theme::textDim);
             g.setFont (Theme::font (Theme::smallFontSize - 0.5f));
             const auto subtitle = kind == Kind::instrument ? juce::String (juce::CharPointer_UTF8 ("Instrument \xc2\xb7 ")) + info.maker
-                                : kind == Kind::fader      ? juce::String ("The track's fader and pan")
+                                : kind == Kind::fader      ? juce::String ("Fader and pan")
                                 : dimmed                   ? juce::String (juce::CharPointer_UTF8 ("Bypassed \xc2\xb7 ")) + info.maker
                                                            : info.maker;
             g.drawText (subtitle, content.removeFromTop (16), juce::Justification::centredLeft, true);

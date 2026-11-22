@@ -15,6 +15,7 @@ namespace ez
     {
         using Chain = MasteringChainPlugin;
         constexpr int gap = 10;
+        constexpr const char* noReading = "--.-";   // no reading yet (as the transport's meter)
 
         juce::String oneDecimal (float v)   { return juce::String (v, 1); }
 
@@ -650,14 +651,14 @@ namespace ez
             // The four big numbers
             auto boxes = readoutArea;
             const auto w = (boxes.getWidth() - 3 * 8) / 4;
-            const auto lufsText = [] (float v, bool valid) { return valid && v > -99.0f ? oneDecimal (v) : juce::String ("-"); };
+            const auto lufsText = [] (float v, bool valid) { return valid && v > -99.0f ? oneDecimal (v) : juce::String (noReading); };
             drawReadout (g, boxes.removeFromLeft (w), "INTEGRATED", lufsText (readings.integratedLufs, readings.integratedValid), "LUFS", true);
             boxes.removeFromLeft (8);
             drawReadout (g, boxes.removeFromLeft (w), "SHORT-TERM", lufsText (readings.shortTermLufs, readings.shortTermValid), "LUFS", true);
             boxes.removeFromLeft (8);
             drawReadout (g, boxes.removeFromLeft (w), "TRUE PEAK", lufsText (readings.truePeakDb, readings.truePeakDb > -99.0f), "dBTP", ! peakTooHot);
             boxes.removeFromLeft (8);
-            drawReadout (g, boxes, "RANGE", readings.loudnessRangeValid ? oneDecimal (readings.loudnessRangeLu) : juce::String ("-"), "LU", true);
+            drawReadout (g, boxes, "RANGE", readings.loudnessRangeValid ? oneDecimal (readings.loudnessRangeLu) : juce::String (noReading), "LU", true);
 
             // What it means
             g.setColour (Theme::text);
@@ -707,7 +708,7 @@ namespace ez
             drawWell (g, r.toFloat(), (float) Theme::cornerRadius);
 
             // A thin bar along the bottom in the reading's state: green on target, amber when not
-            if (value != "-")
+            if (value != noReading)
             {
                 g.setColour ((ok ? Theme::success : Theme::warning).withAlpha (0.8f));
                 g.fillRoundedRectangle (r.toFloat().reduced (8.0f, 0.0f).removeFromBottom (2.0f), 1.0f);
@@ -716,7 +717,7 @@ namespace ez
             r = r.reduced (12, 7);
             drawCaption (g, label, r.removeFromTop (13));
             const auto valueFont = Theme::font (Theme::readoutFontSize, Theme::Weight::semibold);
-            g.setColour (value == "-" ? Theme::textFaint : ok ? Theme::displayText : Theme::warning);
+            g.setColour (value == noReading ? Theme::textFaint : ok ? Theme::displayText : Theme::warning);
             g.setFont (valueFont);
             const auto valueWidth = juce::roundToInt (juce::GlyphArrangement::getStringWidth (valueFont, value)) + 2;
             g.drawText (value, r.removeFromLeft (juce::jmin (valueWidth, r.getWidth())), juce::Justification::centredLeft, false);
@@ -1213,11 +1214,15 @@ namespace ez
         }
 
         // Chain: title row, then the cards (scrolling sideways if they don't fit)
+        // On a narrow window the title gives way first, so the preset picker always has a usable width
         auto titleRow = r.removeFromTop (30);
-        chainTitleArea = titleRow.removeFromLeft (140);
-        chainButton.setBounds (titleRow.removeFromLeft (chainButton.getIdealWidth (28)).withSizeKeepingCentre (chainButton.getIdealWidth (28), 28));
+        const auto buttonWidth = juce::jmin (130, chainButton.getIdealWidth (28));
+        chainTitleArea = titleRow.getWidth() >= 140 + buttonWidth + 10 + 240 ? titleRow.removeFromLeft (140) : juce::Rectangle<int>();
+        chainButton.setBounds (titleRow.removeFromLeft (buttonWidth).withSizeKeepingCentre (buttonWidth, 28));
         titleRow.removeFromLeft (10);
-        presetBox.setBounds (titleRow.removeFromLeft (juce::jmin (380, titleRow.getWidth())).withSizeKeepingCentre (juce::jmin (380, titleRow.getWidth()), 28));
+        const auto presetWidth = juce::jmin (380, titleRow.getWidth());
+        presetBox.setVisible (presetWidth >= 140);
+        presetBox.setBounds (titleRow.removeFromLeft (presetWidth).withSizeKeepingCentre (presetWidth, 28));
         r.removeFromTop (8);
 
         const auto chainHeight = juce::jlimit (150, 220, r.getHeight() / 2);
