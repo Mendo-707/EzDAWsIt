@@ -47,6 +47,11 @@ namespace ez
         bool perform (const InvocationInfo&) override;
         bool keyPressed (const juce::KeyPress&) override;   // piano roll keys that have no command (Up/Down, 1-3, Q, F)
 
+        // For the screenshots
+        BrowserPanel* getBrowser() noexcept                 { return browser.get(); }
+        juce::DocumentWindow* getHelpWindow() noexcept      { return helpWindow.get(); }
+        void showHelpTopic (const juce::String& id)         { openHelp (id); }
+
     private:
         AudioEngine& audioEngine;
         Session& session;
@@ -74,7 +79,7 @@ namespace ez
         bool browserVisible = true;
 
         std::unique_ptr<juce::FileChooser> fileChooser;
-        std::unique_ptr<juce::DocumentWindow> tunerWindow, shortcutsWindow;
+        std::unique_ptr<juce::DocumentWindow> tunerWindow, shortcutsWindow, helpWindow;
         std::unique_ptr<juce::Component> tour;
         ModalBackdrop backdrop;   // dims the window behind dialogs
 
@@ -118,6 +123,7 @@ namespace ez
         void askForNewSongName (int templateIndex = -1);   // index into the song templates; -1: Empty song
         void chooseSongToOpen();
         void chooseAudioFileToImport();
+        void openHelp (const juce::String& topicId);   // the help guide, at a topic (empty: where it was)
         void showAddTrackMenu (juce::Component* anchor);
         void showGridMenu();
         static juce::String describeGrid (double beats);

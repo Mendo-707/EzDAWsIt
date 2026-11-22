@@ -3,6 +3,7 @@
 */
 
 #include "Screenshots.h"
+#include "../UI/Shell/BrowserPanel.h"
 #include "../Core/AppPaths.h"
 #include "../Engine/AudioEngine.h"
 #include "../Engine/Session.h"
@@ -326,6 +327,51 @@ namespace ez::Screenshots
             }
 
             window.setSize (1280, 760);
+
+            // The browser's categories
+            if (auto* browser = main->getBrowser())
+            {
+                using C = BrowserPanel::Category;
+                const std::pair<const char*, C> categories[] = { { "sounds", C::sounds }, { "effects", C::effects }, { "patterns", C::patterns },
+                                                                 { "samples", C::samples }, { "learn", C::learn }, { "kits", C::kits } };
+
+                for (const auto& [name, category] : categories)
+                {
+                    browser->selectCategory (category);
+
+                    if (category == C::effects)
+                        browser->toggleFoldByName ("Reverb");
+
+                    pump (300);
+                    problems += save (*main, folder.getChildFile (juce::String ("browser-") + name + ".png")) ? 0 : 1;
+                }
+
+                browser->setSearchText ("bass");
+                pump (300);
+                problems += save (*main, folder.getChildFile ("browser-search.png")) ? 0 : 1;
+                browser->setSearchText ({});
+
+                window.setSize (900, 500);   // too short for the grid: the categories fold to one row
+                browser->selectCategory (C::patterns);
+                pump (400);
+                problems += save (*main, folder.getChildFile ("browser-folded-900x500.png")) ? 0 : 1;
+                window.setSize (1280, 760);
+                browser->selectCategory (C::instruments);
+                pump (300);
+            }
+
+            // The help guide: a tutorial (ticking as the song changes) and a guide
+            for (const auto* topic : { "first-beat", "browser", "latency-lag" })
+            {
+                main->showHelpTopic (topic);
+                pump (500);
+
+                if (auto* help = main->getHelpWindow())
+                    problems += save (*help->getContentComponent(), folder.getChildFile (juce::String ("help-") + topic + ".png")) ? 0 : 1;
+            }
+
+            main->perform (juce::ApplicationCommandTarget::InvocationInfo (CommandIDs::openHelpGuide));   // closes it
+            pump (200);
 
             // A menu with every kind of item, and a message box
             {

@@ -232,6 +232,7 @@ namespace ez
             juce::PluginDescription description;     // only for VST3/AU plugins
             juce::String category = {};              // effects: "Dynamics", "EQ & Filter"... (Effects::categories); VST3s: empty
             bool bundled = false;                    // ships with EzDAWsIt (the EzDAW plug-ins): listed with the built-ins
+            juce::String preset = {};                // one of its built-in presets/sounds (PluginPresets) to start with
         };
 
         /** True for a plug-in in the app's own Plugins folder (AppPaths::getBundledPluginsFolder). */
@@ -258,6 +259,14 @@ namespace ez
 
         juce::StringArray getEffectNames (int trackIndex) const;
         bool addEffect (int trackIndex, const PluginChoice&, bool openWindow);
+
+        /** True if the track has a plugin of this type (an instrument or an effect). */
+        bool hasPluginOfType (int trackIndex, const juce::String& pluginType) const;
+
+        /** Loads a built-in preset (PluginPresets) onto the first plugin of its type on the track: everything
+            the built-in presets of that type set goes back to its default first, so it sounds the same whatever
+            was there. One undo step. */
+        bool applyPluginPreset (int trackIndex, const juce::String& pluginType, const juce::String& presetName);
         bool removeEffect (int trackIndex, int effectIndex);
         bool openEffectWindow (int trackIndex, int effectIndex);
 
@@ -430,6 +439,15 @@ namespace ez
 
         /** Creates an empty MIDI clip (for drawing notes in). */
         bool createMidiClip (int trackIndex, te::TimePosition start, te::TimeDuration length, const juce::String& name = {});
+
+        /** Puts a built-in MIDI pattern (MidiPatterns, by name) on a track as a clip, from the bar line at or before
+            `at`, in the song's key there. A drum beat needs a Drum Machine and a melodic pattern an instrument (not a
+            Drum Machine): on any other track, or with trackIndex -1, it goes on a new track that suits it (a Drum
+            Machine with a matching kit, or the synth with a matching sound). One undo step. */
+        bool addMidiPattern (const juce::String& patternName, int trackIndex, te::TimePosition at);
+
+        /** The track addMidiPattern would use: trackIndex itself, or -1 for a new one. */
+        int trackForPattern (const juce::String& patternName, int trackIndex) const;
 
         //==============================================================================
         // Notes (the piano roll). Beats are "content beats": counted from the start of the clip's
@@ -914,6 +932,9 @@ namespace ez
             bool isBuiltIn() const noexcept     { return builtIn >= 0; }
         };
 
+        /** Built-in recipes that name a plugin preset or synth sound that doesn't exist (empty when all is well). */
+        static juce::StringArray findMissingBuiltInPresets();
+
         static juce::File getPresetFolder (PresetKind);
         static juce::String getPresetExtension (PresetKind);
         juce::Array<PresetInfo> getPresets (PresetKind) const;    // built-ins first, then yours (A-Z)
@@ -1016,6 +1037,7 @@ namespace ez
 
     private:
         void addScannedPlugins (juce::Array<PluginChoice>&, bool instruments) const;   // bundled first, then the rest
+        bool applyBuiltInPreset (te::Plugin&, const juce::String& presetName);         // false if none named or not found
         bool lowLatency = false, applyingLowLatency = false, warnedAboutDriver = false;
         void applyLowLatency();
         static void clearLatencyMarks (juce::ValueTree&);   // a copy for a fingerprint, or a song just opened

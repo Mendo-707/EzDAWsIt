@@ -32,7 +32,11 @@ namespace ez::PluginPresets
         std::vector<Value> values;
         bool isFactory = false;
         juce::File file;   // user presets
+        juce::String category = {};   // factory sounds: "Bass", "Keys", "Pad"... (menus and the browser group by it)
     };
+
+    /** A value as it's kept in a plugin's state: whole numbers as ints (the synth's waveforms and switches). */
+    juce::var asVar (float value);
 
     /** Every parameter's value, plus the given state-only settings. */
     std::vector<Value> capture (te::Plugin&, const juce::StringArray& settingIds);
@@ -45,8 +49,14 @@ namespace ez::PluginPresets
     /** Every parameter to its default and every listed setting removed (its default applies). */
     void resetToDefaults (te::Plugin&, const juce::StringArray& settingIds);
 
-    /** Built-in sounds for this plugin type (may be empty). */
+    /** Built-in sounds for this plugin type (may be empty), grouped by category in order. */
     std::vector<Preset> getFactory (const juce::String& pluginType);
+
+    /** Every plugin type that has built-in sounds. */
+    juce::StringArray getTypesWithFactoryPresets();
+
+    /** A built-in sound by name (nullopt if there's none of that name). */
+    std::optional<Preset> findFactory (const juce::String& pluginType, const juce::String& name);
 
     /** The user's presets for this plugin type, by name. */
     std::vector<Preset> getUser (const juce::String& pluginType);
@@ -58,7 +68,8 @@ namespace ez::PluginPresets
 
     bool deleteUser (const Preset&);
 
-    /** The preset last loaded into this plugin, kept in its state (not an undo step). */
+    /** The preset last loaded into this plugin, kept in its state. Not an undo step of its own; with
+        `withTheSound`, it joins the undo step the sound changed in, so one undo puts both back. */
     juce::String getCurrentName (te::Plugin&);
-    void setCurrentName (te::Plugin&, const juce::String&);
+    void setCurrentName (te::Plugin&, const juce::String&, bool withTheSound = false);
 }

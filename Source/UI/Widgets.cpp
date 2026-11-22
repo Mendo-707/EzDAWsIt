@@ -32,6 +32,11 @@ namespace ez
                                                    { "M8.6 7.6L20 18" }, { "M8.6 16.4L20 6" } };
                 case Icon::eraser:        return { { "M4 15L14 5L19 10L11 18H7Z" }, { "M9 10L14 15" }, { "M11 21H20" } };
                 case Icon::bolt:          return { { "M13 2L4 14H11L10 22L20 9H13L13 2Z" } };
+                case Icon::star:          return { { "M12 3L14.8 8.7L21 9.6L16.5 14L17.6 20.2L12 17.3L6.4 20.2L7.5 14L3 9.6L9.2 8.7Z" } };
+                case Icon::wave:          return { { "M2 12H5L7 6L10 18L13 4L16 20L18 9L19.5 12H22" } };
+                case Icon::grid:          return { { "M4 4H10V10H4Z" }, { "M14 4H20V10H14Z" }, { "M4 14H10V20H4Z" }, { "M14 14H20V20H14Z" } };
+                case Icon::folder:        return { { "M3 6A2 2 0 0 1 5 4H9L11 6H19A2 2 0 0 1 21 8V18A2 2 0 0 1 19 20H5A2 2 0 0 1 3 18Z" } };
+                case Icon::book:          return { { "M4 5A2 2 0 0 1 6 3H20V18H6A2 2 0 0 0 4 20Z" }, { "M4 20A2 2 0 0 0 6 22H20V18" }, { "M8 7H16" } };
                 case Icon::snowflake:     return { { "M12 3V21" }, { "M4.2 7.5L19.8 16.5" }, { "M4.2 16.5L19.8 7.5" }, { "M9.5 4.5L12 7L14.5 4.5" }, { "M9.5 19.5L12 17L14.5 19.5" } };
                 case Icon::magnet:        return { { "M5 4V11A7 7 0 0 0 19 11V4" }, { "M9 4V11A3 3 0 0 0 15 11V4" }, { "M5 8H9" }, { "M15 8H19" } };
                 case Icon::undo:          return { { "M9 14L4 9L9 4" }, { "M4 9H14.5A5.5 5.5 0 0 1 14.5 20H11" } };

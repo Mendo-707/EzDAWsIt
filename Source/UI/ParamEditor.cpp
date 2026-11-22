@@ -2460,7 +2460,7 @@ namespace ez
             {
                 plugin->edit.getUndoManager().beginNewTransaction();
                 PluginPresets::apply (*plugin, preset.values, settingIds, true);
-                PluginPresets::setCurrentName (*plugin, preset.name);
+                PluginPresets::setCurrentName (*plugin, preset.name, true);   // undone with the sound
                 presetEdited = false;
                 updatePresetButton();
                 afterSoundChange();
@@ -2470,7 +2470,7 @@ namespace ez
             {
                 plugin->edit.getUndoManager().beginNewTransaction();
                 PluginPresets::resetToDefaults (*plugin, settingIds);
-                PluginPresets::setCurrentName (*plugin, {});
+                PluginPresets::setCurrentName (*plugin, {}, true);
                 presetEdited = false;
                 updatePresetButton();
                 afterSoundChange();
@@ -2487,8 +2487,31 @@ namespace ez
                 menu.addSectionHeader ("Built in");
                 menu.addItem (1, "Default (every control reset)");
 
+                // Sounds with a category (the synth's Bass, Keys, Pad...) go in a submenu each, in order
+                juce::StringArray categories;
+
+                for (const auto& p : factory)
+                    if (p.category.isNotEmpty())
+                        categories.addIfNotAlreadyThere (p.category);
+
+                for (const auto& category : categories)
+                {
+                    juce::PopupMenu sub;
+                    bool holdsCurrent = false;
+
+                    for (int i = 0; i < (int) factory.size(); ++i)
+                        if (factory[(size_t) i].category == category)
+                        {
+                            sub.addItem (100 + i, factory[(size_t) i].name, true, factory[(size_t) i].name == current);
+                            holdsCurrent = holdsCurrent || factory[(size_t) i].name == current;
+                        }
+
+                    menu.addSubMenu (category, sub, true, nullptr, holdsCurrent);
+                }
+
                 for (int i = 0; i < (int) factory.size(); ++i)
-                    menu.addItem (100 + i, factory[(size_t) i].name, true, factory[(size_t) i].name == current);
+                    if (factory[(size_t) i].category.isEmpty())
+                        menu.addItem (100 + i, factory[(size_t) i].name, true, factory[(size_t) i].name == current);
 
                 menu.addSectionHeader ("Yours");
 

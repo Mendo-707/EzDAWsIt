@@ -7,6 +7,7 @@
 #include "../Core/Version.h"
 #include "TunerView.h"
 #include "HelpViews.h"
+#include "HelpGuide.h"
 #include "UiMode.h"
 #include "../Engine/MidiLearn.h"
 #include "TrackMenus.h"
@@ -94,6 +95,7 @@ namespace ez
                     askForNewSongName (i);
         };
         browser->onProblem = problem;
+        browser->onOpenHelp = [this] (const juce::String& topic) { openHelp (topic); };
         detailPanel = std::make_unique<DetailPanel> (session);
         detailPanel->setFocusedTrackSource ([this] { return timeline.getFocusedTrack(); });
         detailPanel->setProblemHandler (problem);
@@ -140,6 +142,7 @@ namespace ez
         UiMode::getBroadcaster().removeChangeListener (&viewModeListener);
         tour = nullptr;
         shortcutsWindow = nullptr;
+        helpWindow = nullptr;
         TrackMenus::setTunerOpener (nullptr);
         session.getMidiLearn().performAction = nullptr;
         session.getMidiLearn().onChange = nullptr;
@@ -217,7 +220,7 @@ namespace ez
     {
         using namespace CommandIDs;
         commands.addArray ({ newSong, openSong, saveSong, audioSetup, pluginList,
-                             togglePlay, toggleRecord, returnToStart, toggleClick, toggleCountIn, toggleLowLatency,
+                             togglePlay, toggleRecord, returnToStart, toggleClick, toggleCountIn, toggleLowLatency, openHelpGuide, browserFavourite,
                              addTrack, importAudio, undo, redo, addInstrumentTrack, routing,
                              deleteSelection, toggleLoop, toggleSnap, zoomIn, zoomOut,
                              copy, cut, paste, duplicate, selectAll, splitClips, deselectAll,
@@ -536,8 +539,8 @@ namespace ez
                 break;
 
             case CommandIDs::showShortcuts:
-                info.setInfo ("Keyboard shortcuts", "Every command and its keys, searchable (F1)", "Help", 0);
-                info.addDefaultKeypress (juce::KeyPress::F1Key, 0);
+                info.setInfo ("Keyboard shortcuts", "Every command and its keys, searchable (Ctrl+/)", "Help", 0);
+                info.addDefaultKeypress ('/', cmd);
                 info.setTicked (shortcutsWindow != nullptr);
                 break;
 
@@ -792,6 +795,18 @@ namespace ez
                 info.addDefaultKeypress ('c', 0);
                 info.setActive (hasSong);
                 info.setTicked (session.isClickEnabled());
+                break;
+
+            case CommandIDs::openHelpGuide:
+                info.setInfo ("Help guide & tutorials", "Tutorials that tick themselves as you go, guides and fixes for common problems (F1)", "Help", 0);
+                info.addDefaultKeypress (juce::KeyPress::F1Key, 0);
+                info.setTicked (helpWindow != nullptr);
+                break;
+
+            case CommandIDs::browserFavourite:
+                info.setInfo ("Star in the browser", "Add the selected browser item to Favourites, or take it off (Ctrl+K)", "View", 0);
+                info.addDefaultKeypress ('k', cmd);
+                info.setActive (browser != nullptr && browser->isVisible());
                 break;
 
             case CommandIDs::toggleLowLatency:
@@ -1493,6 +1508,21 @@ namespace ez
             case CommandIDs::toggleClick:   session.setClickEnabled (! session.isClickEnabled()); return true;
             case CommandIDs::toggleCountIn: session.setCountInEnabled (! session.isCountInEnabled()); return true;
 
+            case CommandIDs::openHelpGuide:
+                if (helpWindow != nullptr)
+                    helpWindow = nullptr;
+                else
+                    openHelp ({});
+
+                commandManager.commandStatusChanged();
+                return true;
+
+            case CommandIDs::browserFavourite:
+                if (browser != nullptr && ! browser->toggleFavouriteOfSelection())
+                    session.showHint ("Click something in the browser first: Ctrl+K stars it");
+
+                return true;
+
             case CommandIDs::toggleLowLatency:
             {
                 const auto on = ! session.isLowLatencyMonitoring();
@@ -1831,6 +1861,30 @@ namespace ez
                             });
     }
 
+    void MainComponent::openHelp (const juce::String& topicId)
+    {
+        if (helpWindow != nullptr)
+        {
+            if (auto* guide = dynamic_cast<HelpGuideView*> (helpWindow->getContentComponent()); guide != nullptr && topicId.isNotEmpty())
+                guide->showTopic (topicId);
+
+            helpWindow->toFront (true);
+            return;
+        }
+
+        juce::Component::SafePointer<MainComponent> safe (this);
+        helpWindow = createHelpGuideWindow (session, commandManager, topicId, [safe]
+        {
+            if (safe != nullptr)
+            {
+                safe->helpWindow = nullptr;
+                safe->commandManager.commandStatusChanged();
+            }
+        });
+        helpWindow->setVisible (true);
+        commandManager.commandStatusChanged();
+    }
+
     void MainComponent::chooseAudioFileToImport()
     {
         auto& formats = audioEngine.getEngine().getAudioFileFormatManager().readFormatManager;
@@ -2083,7 +2137,8 @@ namespace ez
               boundsOf ([] (MainComponent& m) -> juce::Component* { return m.detailPanel.get(); }) },
             { "Tips appear here", "What just happened, and what you can do next, shows in the status bar.",
               boundsOf ([] (MainComponent& m) -> juce::Component* { return m.statusBar.get(); }) },
-            { "That's it", "Every command and its shortcut is in Help > Keyboard shortcuts (F1). "
+            { "That's it", "F1 opens the help guide: tutorials that tick themselves as you go, and answers to common problems. "
+              "Every shortcut is in Help > Keyboard shortcuts (Ctrl+/). "
               "Tip: Song templates in the browser give you a whole band, beat or podcast set up with a double-click.", nullptr },
         };
 

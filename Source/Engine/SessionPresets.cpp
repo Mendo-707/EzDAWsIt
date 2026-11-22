@@ -20,6 +20,7 @@
 #include "Mastering.h"
 #include "DrumKits.h"
 #include "DrumMachinePlugin.h"
+#include "PluginPresets.h"
 #include "AudioEngine.h"
 #include "../Core/AppPaths.h"
 
@@ -35,6 +36,7 @@ namespace ez
             const char* type;
             std::vector<std::pair<int, float>> values;   // control index, value (our effects)
             int vocalPreset = -1;                        // Vocal Chain: which preset
+            const char* preset = nullptr;                // a built-in preset of the plugin (PluginPresets), by name
         };
 
         struct ChainRecipe
@@ -55,6 +57,7 @@ namespace ez
             int colour = -1;                             // palette index (-1: the next one)
             std::vector<std::pair<const char*, float>> patch = {};   // the instrument's settings (property, value)
             float pan = 0.0f;
+            const char* sound = nullptr;                 // a built-in sound of the instrument (PluginPresets), by name
         };
 
         struct TemplateRecipe
@@ -77,6 +80,15 @@ namespace ez
         EffectRecipe limit (float inputDb, float ceilingDb) { return { LimiterPlugin::xmlTypeName, { { LimiterPlugin::input, inputDb }, { LimiterPlugin::ceiling, ceilingDb } } }; }
         EffectRecipe vocal (int preset)                 { return { VocalChainPlugin::xmlTypeName, {}, preset }; }
         EffectRecipe plain (const char* type)           { return { type, {} }; }
+        EffectRecipe fx (const char* type, const char* preset)   { return { type, {}, -1, preset }; }
+
+        /** A built-in synth sound on a track: no effects of its own, or the ones given. */
+        TrackRecipe synth (const char* name, const char* description, const char* sound, std::vector<EffectRecipe> effects, float volumeDb, int colour)
+        {
+            TrackRecipe r { name, description, te::FourOscPlugin::xmlTypeName, -1, std::move (effects), volumeDb, colour };
+            r.sound = sound;
+            return r;
+        }
 
         struct AmpSettings { int mode; float gain; int cab = 1; float gate = -96, tight = 60, bass = 0, mid = 0, treble = 0, presence = 0, blend = 0; };
 
@@ -147,6 +159,45 @@ namespace ez
                   { cut (120.0f, 14000.0f), plain (te::CompressorPlugin::xmlTypeName), saturate (10.0f, 1.0f, 40.0f), limit (3.0f, -1.0f) } },
                 { "Drums: room smash",      "Crushed room sound: big and trashy",
                   { plain (te::CompressorPlugin::xmlTypeName), saturate (12.0f, 1.0f, 55.0f), limit (4.0f, -1.0f) } },
+                { "Vocal: airy pop",        "Polished pop vocal: esses tamed, even, bright air, a plate",
+                  { cut (100.0f, 20000.0f), fx (DeEsserPlugin::xmlTypeName, "Gentle"), fx (te::CompressorPlugin::xmlTypeName, "Vocal"),
+                    fx (te::EqualiserPlugin::xmlTypeName, "Air"), fx (te::ReverbPlugin::xmlTypeName, "Vocal plate") } },
+                { "Vocal: hard tune",       "The robotic tuned sound, kept even, with a plate",
+                  { fx (TunePlugin::xmlTypeName, "Robot (hard tune)"), fx (te::CompressorPlugin::xmlTypeName, "Vocal"),
+                    fx (DeEsserPlugin::xmlTypeName, "Gentle"), fx (te::ReverbPlugin::xmlTypeName, "Vocal plate") } },
+                { "Vocal: lo-fi bedroom",   "Warm, dull and close, a short slap",
+                  { cut (150.0f, 9000.0f), fx (SaturatorPlugin::xmlTypeName, "Warm tape"), fx (te::CompressorPlugin::xmlTypeName, "Vocal"),
+                    fx (te::DelayPlugin::xmlTypeName, "Slapback") } },
+                { "Vocal: podcast",         "Speech: rumble off, esses tamed, levelled, no overs",
+                  { cut (80.0f, 16000.0f), fx (DeEsserPlugin::xmlTypeName, "Male voice"), fx (te::CompressorPlugin::xmlTypeName, "Podcast voice"),
+                    limit (2.0f, -1.0f) } },
+                { "Drums: tight kick",      "Kick with weight and click, the boxiness cut",
+                  { fx (te::EqualiserPlugin::xmlTypeName, "Kick"), fx (te::CompressorPlugin::xmlTypeName, "Punchy drums") } },
+                { "Drums: snare crack",     "Snare with body and snap, in a small room",
+                  { fx (te::EqualiserPlugin::xmlTypeName, "Snare"), fx (te::CompressorPlugin::xmlTypeName, "Snare snap"),
+                    fx (te::ReverbPlugin::xmlTypeName, "Drum room") } },
+                { "Hi-hats: clean & wide",  "Lows cut out of the hats, spread wide",
+                  { fx (CutFilterPlugin::xmlTypeName, "Hi-hats"), fx (UtilityPlugin::xmlTypeName, "Wide") } },
+                { "Keys: vintage",          "Warm tape, a gentle chorus, a plate",
+                  { fx (SaturatorPlugin::xmlTypeName, "Warm tape"), fx (te::ChorusPlugin::xmlTypeName, "Subtle"), fx (te::ReverbPlugin::xmlTypeName, "Plate") } },
+                { "Pad: huge space",        "Wide and endless, lows kept clean",
+                  { cut (150.0f, 14000.0f), fx (te::ChorusPlugin::xmlTypeName, "Wide"), fx (te::ReverbPlugin::xmlTypeName, "Cathedral") } },
+                { "Bass: 808 grit",         "808 with grit you hear on phone speakers, mono, no overs",
+                  { fx (SaturatorPlugin::xmlTypeName, "Bass grit"), fx (UtilityPlugin::xmlTypeName, "Mono"), limit (2.0f, -1.0f) } },
+                { "Acoustic guitar",        "Even and sparkly, the boom cut, a small room",
+                  { cut (80.0f, 18000.0f), fx (te::CompressorPlugin::xmlTypeName, "Acoustic guitar"),
+                    fx (te::EqualiserPlugin::xmlTypeName, "Acoustic sparkle"), fx (te::ReverbPlugin::xmlTypeName, "Small room") } },
+                { "Guitar: blues",          "Warm overdrive, a slapback, a small room",
+                  { fx (AmpPlugin::xmlTypeName, "Blues"), fx (te::DelayPlugin::xmlTypeName, "Slapback"), fx (te::ReverbPlugin::xmlTypeName, "Small room") } },
+                { "Guitar: djent",          "Gated, very tight high gain",
+                  { fx (GatePlugin::xmlTypeName, "Guitar noise"), fx (AmpPlugin::xmlTypeName, "Djent"), cut (80.0f, 10000.0f) } },
+                { "Telephone effect",       "A voice or loop through a phone",
+                  { fx (te::EqualiserPlugin::xmlTypeName, "Telephone"), saturate (12.0f, 1.0f, 50.0f) } },
+                { "Dub throw",              "Long dark echoes into a hall",
+                  { fx (te::DelayPlugin::xmlTypeName, "Dub echo"), fx (te::LowPassPlugin::xmlTypeName, "Dull top"), fx (te::ReverbPlugin::xmlTypeName, "Hall") } },
+                { "Master: gentle polish",  "For the master track: a smile EQ, bus glue, a streaming-safe limiter",
+                  { fx (te::EqualiserPlugin::xmlTypeName, "Master smile"), fx (te::CompressorPlugin::xmlTypeName, "Mix bus"),
+                    fx (LimiterPlugin::xmlTypeName, "Streaming master") } },
             };
 
             return recipes;
@@ -211,6 +262,42 @@ namespace ez
                   { cut (200.0f, 20000.0f), plain (te::CompressorPlugin::xmlTypeName) }, -3.0f, 0 },
                 { "Drum mic: room",     "The room around the kit, smashed",            nullptr, -1,
                   { plain (te::CompressorPlugin::xmlTypeName), saturate (12.0f, 1.0f, 55.0f), limit (4.0f, -1.0f) }, -8.0f, 0 },
+                // Synth sounds (the built-in synth's sounds, ready on a track)
+                synth ("Acid bass",       "Squelchy resonant bass for techno and house",   "Acid bass", {}, -4.0f, 1),
+                synth ("Deep house bass", "Round sine-ish bass",                           "Deep house bass", {}, -3.0f, 1),
+                synth ("Fat saw bass",    "Big filtered saw bass",                         "Fat saw bass", {}, -4.0f, 1),
+                synth ("Electric piano",  "Soft bell-like keys",                           "Electric piano", { fx (te::ReverbPlugin::xmlTypeName, "Plate") }, -4.0f, 2),
+                synth ("Organ",           "Drawbar-style organ",                           "Organ", {}, -5.0f, 2),
+                synth ("Lo-fi keys",      "Dusty, wobbly keys",                            "Lo-fi keys", { fx (SaturatorPlugin::xmlTypeName, "Lo-fi") }, -4.0f, 2),
+                synth ("Bell keys",       "Glassy bells",                                  "Bell", {}, -5.0f, 2),
+                synth ("Strings pad",     "Lush strings in a hall",                        "Strings", { fx (te::ReverbPlugin::xmlTypeName, "Hall") }, -6.0f, 5),
+                synth ("Warm pad",        "A soft bed under everything",                   "Warm pad", {}, -6.0f, 5),
+                synth ("Ambient pad",     "An endless wash for intros and ambient tracks", "Ambient wash", {}, -6.0f, 5),
+                synth ("Supersaw lead",   "Huge detuned lead with an echo",                "Supersaw", { fx (te::DelayPlugin::xmlTypeName, "Echo") }, -6.0f, 4),
+                synth ("Sine lead",       "Smooth whistle-like lead",                      "Sine lead", {}, -4.0f, 4),
+                synth ("Pluck synth",     "Short bright plucks with an echo",              "Pluck", {}, -4.0f, 4),
+                synth ("Marimba",         "Wooden mallet tones",                           "Marimba", {}, -3.0f, 4),
+                synth ("Future bass chords", "Wide detuned chord stabs",                   "Future bass chord", {}, -6.0f, 4),
+                synth ("Brass synth",     "Synth brass swells",                            "Brass", {}, -6.0f, 4),
+                synth ("Riser FX",        "Noise riser for build-ups",                     "Riser", {}, -8.0f, 6),
+                // More vocals and drums
+                { "Pop vocal",          "Polished, bright lead vocal",                 nullptr, -1,
+                  { cut (100.0f, 20000.0f), fx (DeEsserPlugin::xmlTypeName, "Gentle"), fx (te::CompressorPlugin::xmlTypeName, "Vocal"),
+                    fx (te::EqualiserPlugin::xmlTypeName, "Air"), fx (te::ReverbPlugin::xmlTypeName, "Vocal plate") }, 0.0f, 3 },
+                { "Hard-tuned vocal",   "The robotic tuned sound",                     nullptr, -1,
+                  { fx (TunePlugin::xmlTypeName, "Robot (hard tune)"), fx (te::CompressorPlugin::xmlTypeName, "Vocal"),
+                    fx (DeEsserPlugin::xmlTypeName, "Gentle"), fx (te::ReverbPlugin::xmlTypeName, "Vocal plate") }, 0.0f, 3 },
+                { "Acoustic guitar (bright)", "Miked acoustic: even and sparkly",       nullptr, -1,
+                  { cut (80.0f, 18000.0f), fx (te::CompressorPlugin::xmlTypeName, "Acoustic guitar"),
+                    fx (te::EqualiserPlugin::xmlTypeName, "Acoustic sparkle"), fx (te::ReverbPlugin::xmlTypeName, "Small room") }, -2.0f, 2 },
+                { "Drums: techno",      "Drum Machine, Techno Kit",                    DrumMachinePlugin::xmlTypeName, 9,  { limit (2.0f, -1.0f) }, 0.0f, 0 },
+                { "Drums: classic 808", "Drum Machine, Classic 808 kit",               DrumMachinePlugin::xmlTypeName, 10, { limit (2.0f, -1.0f) }, 0.0f, 0 },
+                { "Drums: afrobeats",   "Drum Machine, Afro Kit",                      DrumMachinePlugin::xmlTypeName, 11, { limit (2.0f, -1.0f) }, 0.0f, 0 },
+                { "Drums: pop",         "Drum Machine, Pop Kit, glued",                DrumMachinePlugin::xmlTypeName, 12,
+                  { fx (te::CompressorPlugin::xmlTypeName, "Gentle glue"), limit (2.0f, -1.0f) }, 0.0f, 0 },
+                { "Drums: jazz",        "Drum Machine, Soft Jazz kit, in a room",       DrumMachinePlugin::xmlTypeName, 13,
+                  { fx (te::ReverbPlugin::xmlTypeName, "Drum room") }, -2.0f, 0 },
+                { "Drums: UK garage",   "Drum Machine, UK Garage kit",                 DrumMachinePlugin::xmlTypeName, 14, { limit (2.0f, -1.0f) }, 0.0f, 0 },
             };
 
             return recipes;
@@ -240,6 +327,18 @@ namespace ez
                 return StarterBeat { "x........x......", "....x.......x...", "x.o.x.o.x.o.x.o.", 1, "....x.......x..x" };
             if (templateName == "Punk" || templateName == "Hardcore" || templateName == "Metal" || templateName == "Rock band")
                 return StarterBeat { "x.......x.x.....", "....x.......x...", "x.x.x.x.x.x.x.x.", 1, "....x.......xxxx" };
+            if (templateName == "House" || templateName == "Techno")
+                return StarterBeat { "x...x...x...x...", "....x.......x...", "..x...x...x...x.", 2, "....x.......x.xx" };
+            if (templateName == "Pop" || templateName == "Synthwave")
+                return StarterBeat { "x.....x.x.......", "....x.......x...", "x.x.x.x.x.x.x.x.", 1, "....x.......xxxx" };
+            if (templateName == "R&B")
+                return StarterBeat { "x......x.x......", "....x.......x...", "xoxoxoxoxoxoxoxo", 2, "....x.......x..x" };
+            if (templateName == "Afrobeats")
+                return StarterBeat { "x..x..x...x..x..", "...x..x....x..x.", "x.x.x.x.x.x.x.x.", 3, "...x..x....xx.xx" };
+            if (templateName == "UK garage")
+                return StarterBeat { "x.........x.....", "....x.......x...", "..x..x.x..x..x.x", 1, "....x.......x.xx" };
+            if (templateName == "Jazz trio")
+                return StarterBeat { "x.........x.....", "......o.......o.", "x..x.xx..x.xx...", 3, "......o.....o.oo" };
 
             return std::nullopt;
         }
@@ -281,6 +380,26 @@ namespace ez
                   { "Drums: trap", "808 slide (trap)", "Synth keys", "Rap vocal", "Adlibs" }, true, 1, 0 },
                 { "Drum & bass (Reese)", "Rolling drums, a Reese bass, keys and a vocal", 174.0,
                   { "Drums: drum & bass", "Reese bass (DnB)", "Synth keys", "R&B lead vocal" }, true, 4, 3 },
+                { "House",              "Four-on-the-floor drums, deep bass, organ, strings, a vocal", 124.0,
+                  { "Drums: house", "Deep house bass", "Organ", "Strings pad", "Pop vocal" }, true, 4, 0 },
+                { "Techno",             "Driving drums, acid bass, a pad and a riser", 130.0,
+                  { "Drums: techno", "Acid bass", "Warm pad", "Riser FX" }, true, 4, 0 },
+                { "Pop",                "Punchy drums, bass, piano, strings, lead and backing vocals", 110.0,
+                  { "Drums: pop", "Fat saw bass", "Electric piano", "Strings pad", "Pop vocal", "Backing vocals" }, true, 1, 0 },
+                { "R&B",                "Slow 808 groove, keys, a pad, lead and backing vocals", 75.0,
+                  { "Drums: classic 808", "808 / sub bass", "Electric piano", "Warm pad", "R&B lead vocal", "Backing vocals" }, true, 2, 0 },
+                { "Afrobeats",          "Bouncing drums, round bass, marimba, plucks and vocals", 105.0,
+                  { "Drums: afrobeats", "Deep house bass", "Marimba", "Pluck synth", "Pop vocal", "Backing vocals" }, true, 1, 0 },
+                { "UK garage",          "Two-step drums, sub, organ stabs and a chopped vocal", 132.0,
+                  { "Drums: UK garage", "Deep house bass", "Organ", "Pop vocal" }, true, 4, 0 },
+                { "Synthwave",          "80s drums, saw bass, a big lead, a pad and keys", 100.0,
+                  { "Drums: pop", "Fat saw bass", "Supersaw lead", "Warm pad", "Electric piano" }, true, 3, 0 },
+                { "Ambient",            "No drums: a wash, bells, a deep sub", 80.0,
+                  { "Ambient pad", "Bell keys", "Sine lead" }, true, 0, 0 },
+                { "Jazz trio",          "Soft drums, bass guitar and electric piano, recorded together", 120.0,
+                  { "Drums: jazz", "Bass guitar", "Electric piano" }, true, 2, 0 },
+                { "Voice-over",         "One voice, levelled for videos and audiobooks", 120.0,
+                  { "Podcast voice" }, false, 5, 1 },
             };
 
             return recipes;
@@ -392,6 +511,46 @@ namespace ez
                     removeClips (v.getChild (i));
             }
         }
+    }
+
+    //==============================================================================
+    juce::StringArray Session::findMissingBuiltInPresets()
+    {
+        juce::StringArray missing;
+
+        const auto check = [&missing] (const juce::String& where, const juce::String& type, const char* name)
+        {
+            if (name != nullptr && ! PluginPresets::findFactory (type, name).has_value())
+                missing.add (where + ": " + type + " has no preset \"" + name + "\"");
+        };
+
+        for (const auto& c : chainRecipes())
+            for (const auto& e : c.effects)
+                check (c.name, e.type, e.preset);
+
+        for (const auto& t : trackRecipes())
+        {
+            if (t.instrument != nullptr)
+                check (t.name, t.instrument, t.sound);
+
+            for (const auto& e : t.effects)
+                check (t.name, e.type, e.preset);
+
+            if (t.kit >= DrumKits::getNumKits())
+                missing.add (juce::String (t.name) + ": no drum kit " + juce::String (t.kit));
+        }
+
+        juce::StringArray trackNames;
+
+        for (const auto& t : trackRecipes())
+            trackNames.add (t.name);
+
+        for (const auto& r : templateRecipes())
+            for (const auto* track : r.tracks)
+                if (! trackNames.contains (track))
+                    missing.add (juce::String (r.name) + ": no track preset \"" + track + "\"");
+
+        return missing;
     }
 
     //==============================================================================
@@ -514,6 +673,19 @@ namespace ez
             if (auto* effect = dynamic_cast<EffectPlugin*> (plugin.get()))
                 for (auto [control, value] : recipe.values)
                     effect->set (control, value);
+
+            if (recipe.preset != nullptr)   // one of the plugin's built-in presets
+            {
+                if (const auto preset = PluginPresets::findFactory (recipe.type, recipe.preset))
+                {
+                    PluginPresets::apply (*plugin, preset->values, {}, false);
+                    PluginPresets::setCurrentName (*plugin, preset->name);
+                }
+                else
+                {
+                    jassertfalse;   // a recipe names a preset that isn't there (the tests catch this)
+                }
+            }
 
             if (auto* chain = dynamic_cast<VocalChainPlugin*> (plugin.get()); chain != nullptr
                  && juce::isPositiveAndBelow (recipe.vocalPreset, (int) VocalChainPlugin::getPresets().size()))
@@ -718,6 +890,21 @@ namespace ez
 
                     for (const auto& [property, value] : r.patch)   // the copy, not the plugin: nothing to undo
                         instrument.setProperty (property, value, nullptr);
+
+                    if (r.sound != nullptr)   // one of the instrument's built-in sounds
+                    {
+                        if (const auto sound = PluginPresets::findFactory (r.instrument, r.sound))
+                        {
+                            for (const auto& v : sound->values)
+                                instrument.setProperty (juce::Identifier (v.id), v.text.isNotEmpty() ? juce::var (v.text) : PluginPresets::asVar (v.value), nullptr);
+
+                            instrument.setProperty ("ezPresetName", sound->name, nullptr);
+                        }
+                        else
+                        {
+                            jassertfalse;   // the tests catch this
+                        }
+                    }
                 }
                 else
                 {

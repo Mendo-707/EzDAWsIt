@@ -412,12 +412,68 @@ namespace ez
         void fileDragMove (const juce::StringArray&, int x, int y) override     { dropPoint = juce::Point<int> (x, y); repaint(); }
         void fileDragExit (const juce::StringArray&) override                   { dropPoint.reset(); repaint(); }
 
-        // From the browser: the same as dropping the files from Explorer
-        bool isInterestedInDragSource (const SourceDetails& d) override     { const auto f = BrowserDrag::filesIn (d.description); return ! f.isEmpty() && isInterestedInFileDrag (f); }
+        // From the browser: sounds as if dropped from Explorer; patterns, instruments and effects too
+        bool isInterestedInDragSource (const SourceDetails& d) override
+        {
+            if (! session.hasSong())
+                return false;
+
+            if (BrowserDrag::patternIn (d.description).isNotEmpty() || BrowserDrag::pluginIn (d.description, session).has_value())
+                return true;
+
+            const auto f = BrowserDrag::filesIn (d.description);
+            return ! f.isEmpty() && isInterestedInFileDrag (f);
+        }
+
         void itemDragEnter (const SourceDetails& d) override                { dropPoint = d.localPosition; repaint(); }
         void itemDragMove (const SourceDetails& d) override                 { dropPoint = d.localPosition; repaint(); }
         void itemDragExit (const SourceDetails&) override                   { dropPoint.reset(); repaint(); }
-        void itemDropped (const SourceDetails& d) override                  { filesDropped (BrowserDrag::filesIn (d.description), d.localPosition.x, d.localPosition.y); }
+
+        void itemDropped (const SourceDetails& d) override
+        {
+            const auto x = d.localPosition.x, y = d.localPosition.y;
+            const auto numTracks = session.getNumAudioTracks();
+            const auto track = juce::jlimit (0, numTracks, view.trackAt (y));   // numTracks: below the last one, a new track
+
+            if (const auto pattern = BrowserDrag::patternIn (d.description); pattern.isNotEmpty())
+            {
+                dropPoint.reset();
+                repaint();
+
+                // On the track under it if it can play it, otherwise on a new track that can
+                if (session.addMidiPattern (pattern, track < numTracks ? track : -1, snappedTimeAt (x)))
+                    view.focusedTrack = session.getNumAudioTracks() > numTracks ? session.getNumAudioTracks() - 1 : track;
+                else if (owner.onProblem)
+                    owner.onProblem ("Could not add " + pattern, session.getLastError());
+
+                return;
+            }
+
+            if (const auto plugin = BrowserDrag::pluginIn (d.description, session))
+            {
+                dropPoint.reset();
+                repaint();
+                const auto& [choice, isInstrument] = *plugin;
+
+                if (! isInstrument && track >= numTracks)
+                {
+                    if (owner.onProblem)
+                        owner.onProblem ("Drop it on a track", "An effect goes on a track: drop it on the track you want it on.");
+
+                    return;
+                }
+
+                const bool ok = isInstrument ? session.addInstrumentTrack (choice, choice.preset.isEmpty())   // always a new track
+                                             : session.addEffect (track, choice, choice.preset.isEmpty());
+
+                if (! ok && owner.onProblem)
+                    owner.onProblem ("Could not add " + (choice.preset.isNotEmpty() ? choice.preset : choice.name), session.getLastError());
+
+                return;
+            }
+
+            filesDropped (BrowserDrag::filesIn (d.description), x, y);
+        }
 
         void filesDropped (const juce::StringArray& files, int x, int y) override
         {

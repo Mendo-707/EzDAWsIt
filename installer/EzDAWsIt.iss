@@ -1,5 +1,5 @@
 ; EzDAWsIt installer (Inno Setup 6). build.bat runs this after the app builds and passes its tests:
-;     ISCC.exe /DAppVersion=1.0.0 installer\EzDAWsIt.iss
+;     ISCC.exe /DAppVersion=1.1.0 installer\EzDAWsIt.iss
 ; Output: dist\EzDAWsIt-Setup-<version>.exe
 ;
 ; NEVER change AppId: Windows uses it to recognise an update of an installed EzDAWsIt.
@@ -7,7 +7,7 @@
 ; uninstalling never touch them.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 
 #define AppName      "EzDAWsIt"

@@ -91,7 +91,7 @@ namespace ez
             readAhead.stopThread (2000);
         }
 
-        bool start (juce::AudioFormatManager& formats, const juce::File& file, int leftChannel, int rightChannel)
+        bool start (juce::AudioFormatManager& formats, const juce::File& file, int leftChannel, int rightChannel, float gain, bool loop)
         {
             std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
 
@@ -100,12 +100,14 @@ namespace ez
 
             const auto rate = reader->sampleRate;
             auto newSource = std::make_unique<juce::AudioFormatReaderSource> (reader.release(), true);
+            newSource->setLooping (loop);   // before it's playing: the audio thread reads it
             transport.setSource (nullptr);   // the old one stops before it's deleted
             source = std::move (newSource);
             left.store (leftChannel);
             right.store (rightChannel);
             transport.setSource (source.get(), 32768, &readAhead, rate, 2);   // resampled to the device rate
             transport.setPosition (0.0);
+            transport.setGain (gain);
             transport.start();
             playing = file;
             return true;
@@ -124,6 +126,16 @@ namespace ez
         }
 
         bool isPlaying() const              { return deviceRunning && source != nullptr && transport.isPlaying(); }
+        void setGain (float g)              { transport.setGain (g); }   // AudioTransportSource smooths it
+
+        double getProgress() const
+        {
+            if (! isPlaying())
+                return -1.0;
+
+            const auto length = transport.getLengthInSeconds();
+            return length > 0.0 ? std::fmod (transport.getCurrentPosition(), length) / length : -1.0;
+        }
         juce::File getFile() const          { return isPlaying() ? playing : juce::File(); }
 
         void audioDeviceIOCallbackWithContext (const float* const*, int,
@@ -366,8 +378,39 @@ namespace ez
             }
         }
 
-        return preview->start (engine.getAudioFileFormatManager().readFormatManager, file, l, r);
+        return preview->start (engine.getAudioFileFormatManager().readFormatManager, file, l, r,
+                               juce::Decibels::decibelsToGain (getPreviewLevel(), -60.0f), isPreviewLooping());
     }
+
+    namespace
+    {
+        const char* previewLevelKey = "ezPreviewLevel";
+        const char* previewLoopKey = "ezPreviewLoop";
+    }
+
+    void AudioEngine::setPreviewLevel (float dB)
+    {
+        dB = juce::jlimit (-60.0f, 0.0f, dB);
+        engine.getPropertyStorage().getPropertiesFile().setValue (previewLevelKey, dB);
+        preview->setGain (juce::Decibels::decibelsToGain (dB, -60.0f));
+    }
+
+    float AudioEngine::getPreviewLevel() const
+    {
+        return juce::jlimit (-60.0f, 0.0f, (float) engine.getPropertyStorage().getPropertiesFile().getDoubleValue (previewLevelKey, -6.0));
+    }
+
+    void AudioEngine::setPreviewLooping (bool shouldLoop)
+    {
+        engine.getPropertyStorage().getPropertiesFile().setValue (previewLoopKey, shouldLoop);
+    }
+
+    bool AudioEngine::isPreviewLooping() const
+    {
+        return engine.getPropertyStorage().getPropertiesFile().getBoolValue (previewLoopKey, false);
+    }
+
+    double AudioEngine::getPreviewProgress() const     { return preview->getProgress(); }
 
     void AudioEngine::stopPreview()                    { preview->stop(); }
     bool AudioEngine::isPreviewing() const             { return preview->isPlaying(); }

@@ -23,8 +23,10 @@ You are a senior audio-software engineer. Priorities, in order:
 Core/    no audio, no UI: Common.h (include first), AppPaths, Diagnostics (log + crash handler)
 Engine/  audio + song model, no UI: AudioEngine (owns te::Engine), Session (open song + every action on it; SessionMix.cpp: FX returns, sends, buses;
          SessionAutomation.cpp: lanes, Read/Write), Dsp.h (real-time DSP blocks), Effects (our built-in effects)
+         PluginPresets (built-in sounds/effect presets), MidiPatterns (the browser's chords, basslines, beats)
 UI/      JUCE components only: MainComponent (owns commands), TopBar, Timeline/ (TimelineView, Ruler, TrackHeader, ClipView),
          RoutingView, Dialogs, Theme, PluginWindows
+         Shell/BrowserPanel (the browser), HelpGuide (F1: tutorials whose steps tick from the song, guides)
 Tests/   juce::UnitTest, category "EzDAWsIt"; built into the app, run headless via --run-tests
 Main.cpp start-up/shut-down order: Diagnostics -> LookAndFeel -> AudioEngine -> Session -> MainWindow
 ```
@@ -79,6 +81,7 @@ Main.cpp start-up/shut-down order: Diagnostics -> LookAndFeel -> AudioEngine -> 
 
 ## Pitfalls (add one line every time something goes wrong; details in docs/LESSONS.md)
 - Shipped a view with only the headline controls (twice). Follow rule 0a: list the full control set first, from the design and from other DAWs.
+- Tracktion's Compressor ratio is a slope (0.25 = 4:1): presets had it backwards and barely compressed. Check a parameter's display before writing values.
 
 - Tracktion's `modules/juce` submodule URL is SSH: clone JUCE separately over HTTPS (build.bat does).
 - `Components.h` (Tracktion example) `#include`s its own .cpp: include it in one file only (the bridge).

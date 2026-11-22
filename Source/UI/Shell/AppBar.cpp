@@ -52,10 +52,11 @@ namespace ez
         refreshViewMode();
         easyButton.setTooltip ("Easy view: what most songs need (Ctrl+Shift+P switches)");
         proButton.setTooltip ("Pro view: adds routing, inserts, punch and MIDI sync to the screen (Ctrl+Shift+P switches)");
-        helpButton.setTooltip ("Help: the tour, keyboard shortcuts (F1), the log folder, About");
+        helpButton.setTooltip ("Help: the help guide and tutorials (F1), the tour, keyboard shortcuts (Ctrl+/), the log folder, About");
         helpButton.onClick = [this, &commands]
         {
             juce::PopupMenu menu;
+            menu.addCommandItem (&commands, CommandIDs::openHelpGuide);
             menu.addCommandItem (&commands, CommandIDs::startTour);
             menu.addCommandItem (&commands, CommandIDs::showShortcuts);
             menu.addSeparator();

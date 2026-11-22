@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(EzDAWsIt VERSION 1.0.0)
+project(EzDAWsIt VERSION 1.1.0)
 
 # EzDAWsIt is a Windows app: build.bat builds it, and the installer ships it
 if (NOT WIN32)
@@ -61,6 +61,7 @@ set(EZ_SOURCES
     Source/Engine/SessionLatency.cpp
     Source/Engine/ArpeggiatorPlugin.h Source/Engine/ArpeggiatorPlugin.cpp
     Source/Engine/PluginPresets.h   Source/Engine/PluginPresets.cpp
+    Source/Engine/MidiPatterns.h    Source/Engine/MidiPatterns.cpp
     Source/Engine/VocalChain.h      Source/Engine/VocalChain.cpp
     Source/Engine/Mastering.h Source/Engine/Mastering.cpp
     Source/Engine/DrumKits.h        Source/Engine/DrumKits.cpp
@@ -78,6 +79,7 @@ set(EZ_SOURCES
     Source/UI/RecordingSetup.h      Source/UI/RecordingSetup.cpp
     Source/UI/MidiSetup.h           Source/UI/MidiSetup.cpp
     Source/UI/HelpViews.h           Source/UI/HelpViews.cpp
+    Source/UI/HelpGuide.h           Source/UI/HelpGuide.cpp
     Source/UI/UiMode.h              Source/UI/UiMode.cpp
     Source/UI/MixerView.h           Source/UI/MixerView.cpp
     Source/UI/SetupView.h           Source/UI/SetupView.cpp

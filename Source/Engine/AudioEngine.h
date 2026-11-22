@@ -106,6 +106,16 @@ namespace ez
         bool isPreviewing() const;
         juce::File getPreviewFile() const;
 
+        /** Preview level in dB (0 = as recorded, down to -60) and whether it loops; both apply to the next
+            preview started, and the level to the one playing too. Kept between runs. */
+        void setPreviewLevel (float dB);
+        float getPreviewLevel() const;
+        void setPreviewLooping (bool);
+        bool isPreviewLooping() const;
+
+        /** How far through the playing preview, 0 to 1 (-1 when none is playing). */
+        double getPreviewProgress() const;
+
     private:
         void chooseLowLatencyDriverOnFirstRun();
         /** The device list changed (inputs split differently, an interface plugged in): set the new inputs up. */

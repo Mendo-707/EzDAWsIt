@@ -29,6 +29,11 @@
 #include "../UI/Widgets.h"
 #include "../Engine/ArpeggiatorPlugin.h"
 #include "../UI/Shell/StatusBar.h"
+#include "../UI/Shell/BrowserPanel.h"
+#include "../UI/HelpGuide.h"
+#include "../UI/CommandIDs.h"
+#include "../Engine/MidiPatterns.h"
+#include "../Engine/DrumKits.h"
 
 namespace ez::Tests
 {
@@ -277,6 +282,7 @@ namespace ez::Tests
             runMasterTests (session, testFolder.folder);
             runSampleLibraryTests (*engine, testFolder.folder);
             runPresetTests (session, testFolder.folder);
+            runLibraryTests (*engine, session, songFile);
             runGuitarTests (session, songFile);
             runRecordingTests (session, songFile);
             runMidiLearnTests (session, songFile);
@@ -2115,6 +2121,336 @@ namespace ez::Tests
             AppPaths::setBundledPluginsFolderOverride (juce::File());
         }
 
+        /** The browser's library: built-in sounds and presets, MIDI patterns, and the help guide. Each is something
+            a user double-clicks expecting it to work, so each must exist, land where it should, and undo in one step. */
+        void runLibraryTests (AudioEngine& engine, Session& session, const juce::File& songFile)
+        {
+            ensureSongIsOpen (session, songFile);
+
+            if (! session.hasSong())
+                return;
+
+            auto& um = session.getEdit()->getUndoManager();
+
+            beginTest ("Library: every preset a built-in chain, track preset or template names exists (a typo would silently do nothing)");
+            {
+                const auto missing = Session::findMissingBuiltInPresets();
+                expect (missing.isEmpty(), missing.joinIntoString ("; "));
+                expect (PluginPresets::getFactory (te::FourOscPlugin::xmlTypeName).size() >= 30, "the synth comes with a real library of sounds");
+
+                for (const auto& type : PluginPresets::getTypesWithFactoryPresets())
+                {
+                    expect (! PluginPresets::getFactory (type).empty(), type + " is listed as having presets");
+                    juce::StringArray names;
+
+                    for (const auto& p : PluginPresets::getFactory (type))
+                    {
+                        expect (! names.contains (p.name), type + ": two presets called " + p.name);
+                        names.add (p.name);
+                    }
+                }
+
+                // Every synth sound is in a category, so the menus and the browser can group them
+                for (const auto& p : PluginPresets::getFactory (te::FourOscPlugin::xmlTypeName))
+                    expect (p.category.isNotEmpty(), p.name + " has no category");
+            }
+
+            beginTest ("Library: the compressor presets really compress (its ratio is a slope: lower squeezes harder)");
+            {
+                const auto squash = PluginPresets::findFactory (te::CompressorPlugin::xmlTypeName, "Squash");
+                expect (squash.has_value());
+
+                if (squash.has_value())
+                    for (const auto& v : squash->values)
+                        if (v.id == "ratio")
+                            expect (v.value <= 0.25f, "Squash must be at least 4:1, was " + juce::String (1.0f / v.value, 2) + ":1");
+            }
+
+            beginTest ("Library: a sound from the browser makes a track named after it, playing that sound, undone in one step");
+            {
+                const auto before = session.getNumAudioTracks();
+                Session::PluginChoice choice { "Synth (4OSC)", te::FourOscPlugin::xmlTypeName, {} };
+                choice.preset = "Acid bass";
+                expect (session.addInstrumentTrack (choice, false), session.getLastError());
+                expectEquals (session.getNumAudioTracks(), before + 1);
+                expectEquals (session.getTrackName (before), juce::String ("Acid bass"));
+
+                te::Plugin* synth = nullptr;
+
+                for (auto* p : te::getAudioTracks (*session.getEdit())[before]->pluginList)
+                    if (p->isSynth())
+                        synth = p;
+
+                expect (synth != nullptr);
+
+                if (synth != nullptr)
+                {
+                    expectEquals (PluginPresets::getCurrentName (*synth), juce::String ("Acid bass"));
+                    expectEquals ((int) synth->state.getProperty ("filterType"), 1, "its settings are set, not just its knobs");
+
+                    if (auto res = synth->getAutomatableParameterByID ("filterResonance"))
+                        expectWithinAbsoluteError (res->getCurrentBaseValue(), 75.0f, 0.5f);
+
+                    // Loading another sound on it: what the first set and the second doesn't goes back to default
+                    expect (session.applyPluginPreset (before, te::FourOscPlugin::xmlTypeName, "Sine lead"), session.getLastError());
+                    expectEquals (PluginPresets::getCurrentName (*synth), juce::String ("Sine lead"));
+                    expect (! synth->state.hasProperty ("filterType") || (int) synth->state.getProperty ("filterType") == 0,
+                            "Sine lead has no filter: the acid bass's filter must not stay on");
+                    um.undo();
+                    expectEquals (PluginPresets::getCurrentName (*synth), juce::String ("Acid bass"), "one undo puts the old sound back");
+                }
+
+                um.undo();
+                expectEquals (session.getNumAudioTracks(), before, "one more undo removes the track");
+                expect (! session.applyPluginPreset (0, te::FourOscPlugin::xmlTypeName, "No such sound"), "an unknown sound is refused");
+            }
+
+            beginTest ("Library: an effect with a preset goes on set to it; Tune keeps the song's key through its presets");
+            {
+                session.addAudioTrack();
+                const auto t = session.getNumAudioTracks() - 1;
+                Session::PluginChoice reverb { "Reverb", te::ReverbPlugin::xmlTypeName, {}, "Space" };
+                reverb.preset = "Cathedral";
+                expect (session.addEffect (t, reverb, false), session.getLastError());
+                expect (session.getEffectInfo (t).size() == 1);
+
+                if (auto* fx = session.findEffect (t, session.getEffectInfo (t).getFirst().id))
+                {
+                    expectEquals (PluginPresets::getCurrentName (*fx), juce::String ("Cathedral"));
+                    expectWithinAbsoluteError (fx->getAutomatableParameterByID ("room size")->getCurrentBaseValue(), 0.97f, 0.01f);
+                }
+
+                expect (session.setKeyAt (te::TimePosition(), 2, true), session.getLastError());   // D minor
+                Session::PluginChoice tune { "Tune", TunePlugin::xmlTypeName, {}, "Pitch" };
+                tune.preset = "Robot (hard tune)";
+                expect (session.addEffect (t, tune, false), session.getLastError());
+
+                if (auto* fx = session.findEffect (t, session.getEffectInfo (t).getLast().id))
+                {
+                    expectEquals ((int) fx->getAutomatableParameterByID ("root")->getCurrentBaseValue(), 2, "still in D");
+                    expectEquals ((int) fx->getAutomatableParameterByID ("scale")->getCurrentBaseValue(), 2, "still minor");
+                    expectEquals ((int) fx->getAutomatableParameterByID ("speed")->getCurrentBaseValue(), 1, "but robotic");
+
+                    expect (session.applyPluginPreset (t, TunePlugin::xmlTypeName, "Natural"));
+                    expectEquals ((int) fx->getAutomatableParameterByID ("root")->getCurrentBaseValue(), 2, "loading another Tune preset keeps the key too");
+                }
+
+                session.deleteTrack (t);
+                session.setKeyAt (te::TimePosition(), -1, false);
+            }
+
+            beginTest ("Library: every MIDI pattern has notes, fits its length and plays real pads or notes");
+            {
+                juce::StringArray names;
+
+                for (const auto& p : MidiPatterns::getAll())
+                {
+                    expect (! names.contains (p.name), "two patterns called " + p.name);
+                    names.add (p.name);
+                    expect (! p.notes.empty(), p.name + " has no notes");
+
+                    for (const auto& n : p.notes)
+                    {
+                        expect (n.start >= 0.0 && n.start + n.length <= p.lengthBeats + 1.0e-6, p.name + ": a note outside the clip");
+                        expect (n.length > 0.0 && n.velocity >= 1 && n.velocity <= 127, p.name + ": a note with no length or a bad velocity");
+
+                        if (p.kind == MidiPatterns::Kind::drums)
+                            expect (juce::isPositiveAndBelow (n.pitch, DrumMachinePlugin::numPads), p.name + ": not a pad");
+
+                        for (int key = -1; key < 12; ++key)
+                        {
+                            const auto note = MidiPatterns::midiNoteFor (p, n, key);
+                            expect (note >= 0 && note <= 127, p.name + ": out of MIDI range in key " + juce::String (key));
+                        }
+                    }
+
+                    if (p.kind != MidiPatterns::Kind::drums)
+                        expect (PluginPresets::findFactory (te::FourOscPlugin::xmlTypeName, MidiPatterns::suggestedSound (p)).has_value(),
+                                p.name + " suggests a sound that isn't there");
+                }
+
+                for (auto kind : { MidiPatterns::Kind::chords, MidiPatterns::Kind::bass, MidiPatterns::Kind::melody, MidiPatterns::Kind::drums })
+                    expect (std::count_if (MidiPatterns::getAll().begin(), MidiPatterns::getAll().end(),
+                                           [kind] (const MidiPatterns::Pattern& p) { return p.kind == kind; }) >= 8,
+                            MidiPatterns::kindName (kind) + ": at least eight to choose from");
+            }
+
+            beginTest ("Library: a pattern lands in the song's key, from the bar line, on a track that can play it, in one undo step");
+            {
+                expect (session.setKeyAt (te::TimePosition(), 2, false), session.getLastError());   // D major
+                const auto before = session.getNumAudioTracks();
+
+                // An audio track can't play notes: the chords make their own synth track
+                session.addAudioTrack();
+                const auto audioTrack = session.getNumAudioTracks() - 1;
+                expectEquals (session.trackForPattern ("Pop: I-V-vi-IV", audioTrack), -1);
+
+                const auto halfwayThroughBar2 = session.getEdit()->tempoSequence.toTime (te::BeatPosition::fromBeats (session.getBarStartBeat (1) + 2.0));
+                expect (session.addMidiPattern ("Pop: I-V-vi-IV", audioTrack, halfwayThroughBar2), session.getLastError());
+                expectEquals (session.getNumAudioTracks(), before + 2, "a new track for it");
+
+                auto* track = te::getAudioTracks (*session.getEdit()).getLast();
+                auto* clip = track != nullptr ? dynamic_cast<te::MidiClip*> (track->getClips().getLast()) : nullptr;
+                expect (clip != nullptr);
+
+                if (clip != nullptr)
+                {
+                    expectWithinAbsoluteError (session.getEdit()->tempoSequence.toBeats (clip->getPosition().getStart()).inBeats(),
+                                               session.getBarStartBeat (1), 1.0e-6, "from the bar line, not mid-bar");
+                    int lowest = 127;   // of the first chord
+
+                    for (auto* n : clip->getSequence().getNotes())
+                        if (n->getStartBeat().inBeats() < 0.01)
+                            lowest = juce::jmin (lowest, n->getNoteNumber());
+
+                    expectEquals (lowest % 12, 2, "the I chord's root is D in D major");
+                    expectEquals (clip->getName(), juce::String ("Pop: I-V-vi-IV"));
+                }
+
+                um.undo();
+                expectEquals (session.getNumAudioTracks(), before + 1, "one undo takes the pattern and the track made for it");
+
+                // A drum beat on a drum track goes on that track, on the Drum Machine's pads
+                expect (session.addDrumMachineTrack (0), session.getLastError());
+                const auto drums = session.getNumAudioTracks() - 1;
+                expectEquals (session.trackForPattern ("Boom bap", drums), drums);
+                expectEquals (session.trackForPattern ("Boom bap", audioTrack), -1, "not on an audio track");
+                expectEquals (session.trackForPattern ("Pop: I-V-vi-IV", drums), -1, "chords don't go on drums");
+                expect (session.addMidiPattern ("Boom bap", drums, te::TimePosition()), session.getLastError());
+                expectEquals (session.getNumAudioTracks(), drums + 1, "no new track");
+
+                if (auto* beat = dynamic_cast<te::MidiClip*> (te::getAudioTracks (*session.getEdit())[drums]->getClips().getLast()))
+                    for (auto* n : beat->getSequence().getNotes())
+                        expect (DrumMachinePlugin::padForNote (n->getNoteNumber()) >= 0, "every hit is on a pad");
+
+                expect (! session.addMidiPattern ("No such pattern", drums, te::TimePosition()), "an unknown pattern is refused");
+
+                while (session.getNumAudioTracks() > before)
+                    session.deleteTrack (session.getNumAudioTracks() - 1);
+
+                session.setKeyAt (te::TimePosition(), -1, false);
+            }
+
+            beginTest ("Library: the new drum kits all make their sounds");
+            for (int k = 9; k < DrumKits::getNumKits(); ++k)
+                for (int pad = 0; pad < DrumKits::numPads; ++pad)
+                {
+                    juce::String error;
+                    expect (DrumKits::getSampleFile (k, pad, error).existsAsFile(), juce::String (DrumKits::getKit (k).name) + ": " + error);
+                }
+
+            beginTest ("Help: every topic is complete, its links lead somewhere and its buttons run real commands");
+            {
+                juce::StringArray ids;
+                juce::ApplicationCommandManager commands;   // only to check the ids exist below
+                juce::ignoreUnused (commands);
+
+                for (const auto& t : HelpGuide::topics())
+                {
+                    expect (! ids.contains (t.id), "two topics called " + t.id);
+                    ids.add (t.id);
+                    expect (HelpGuide::sections().contains (t.section), t.id + ": unknown section");
+                    expect (t.title.isNotEmpty() && t.summary.isNotEmpty() && ! t.body.isEmpty(), t.id + " is empty");
+
+                    for (const auto& link : t.seeAlso)
+                        expect (HelpGuide::find (link) != nullptr, t.id + " links to " + link + ", which isn't there");
+
+                    for (const auto& step : t.steps)
+                        expect (step.command == 0 || (step.command >= CommandIDs::newSong && step.command <= CommandIDs::browserFavourite),
+                                t.id + ": a step runs a command that doesn't exist");
+
+                    if (t.section == "Tutorials")
+                        expect (t.steps.size() >= 4, t.id + ": a tutorial needs steps");
+                }
+
+                expect (HelpGuide::topics().size() >= 25, "a real guide, not a page");
+                expect (HelpGuide::matches (*HelpGuide::find ("latency-lag"), "delay ASIO"), "search finds words in the text");
+                expect (! HelpGuide::matches (*HelpGuide::find ("latency-lag"), "delay zebra"), "every word must be there");
+
+                // A tutorial's steps tick from the song: "have a song open" is done now
+                const auto* beat = HelpGuide::find ("first-beat");
+                expect (beat != nullptr && beat->steps.front().isDone != nullptr && beat->steps.front().isDone (session));
+            }
+
+            beginTest ("Browser: every category lists something, and effects show their presets under the arrow");
+            {
+                BrowserPanel browser (engine, session);
+                browser.setSize (260, 900);
+                auto& props = engine.getEngine().getPropertyStorage().getPropertiesFile();
+                const auto savedFavourites = props.getValue ("ezBrowserFavourites"), savedRecent = props.getValue ("ezBrowserRecent");
+                props.setValue ("ezBrowserFavourites", juce::String());
+                props.setValue ("ezBrowserRecent", juce::String());
+                BrowserPanel fresh (engine, session);   // starts with empty lists
+                fresh.setSize (260, 900);
+                fresh.getTargetTrack = [] { return 0; };
+
+                using C = BrowserPanel::Category;
+
+                for (auto c : { C::templates, C::trackPresets, C::chains, C::sounds, C::instruments, C::effects, C::patterns,
+                                C::kits, C::samples, C::song, C::files, C::learn })
+                {
+                    fresh.selectCategory (c);
+                    expect (! fresh.getVisibleNames().isEmpty(), "category " + juce::String ((int) c) + " is empty");
+                }
+
+                fresh.selectCategory (C::sounds);
+                expect (fresh.getVisibleNames().contains ("Bass") && fresh.getVisibleNames().contains ("Acid bass"), "sounds by type");
+                expect (fresh.toggleFoldByName ("Bass"), "a section folds");
+                expect (! fresh.getVisibleNames().contains ("Acid bass"), "folded away");
+                fresh.toggleFoldByName ("Bass");
+                expect (fresh.getVisibleNames().contains ("Acid bass"), "and back");
+
+                fresh.selectCategory (C::effects);
+                expect (! fresh.getVisibleNames().contains ("Cathedral"), "presets are hidden until asked for");
+                expect (fresh.toggleFoldByName ("Reverb"));
+                expect (fresh.getVisibleNames().contains ("Cathedral"), "the arrow shows them");
+
+                // Double-clicking a preset adds the effect set to it, on the highlighted track
+                const auto effectsBefore = session.getEffectInfo (0).size();
+                expect (fresh.activateByName ("Cathedral"));
+                expectEquals (session.getEffectInfo (0).size(), effectsBefore + 1);
+                um.undo();
+
+                // ...and it's in Recent, newest first
+                fresh.selectCategory (C::recent);
+                expect (fresh.getVisibleNames().contains ("Reverb: Cathedral"), "Recent remembers what was used");
+
+                // Ctrl+K stars the selected row
+                fresh.selectCategory (C::patterns);
+                expect (fresh.getVisibleNames().contains ("Trap"), "drum beats are listed");
+                fresh.setSearchText ("andalusian");
+                expect (fresh.getVisibleNames().contains ("Andalusian: i-VII-VI-V"), "search finds patterns");
+                fresh.setSearchText ({});
+                fresh.selectCategory (C::favourites);
+                expect (fresh.getVisibleNames().size() == 1, "nothing starred yet: one hint");
+                fresh.selectCategory (C::kits);
+                expect (! fresh.toggleFavouriteOfSelection(), "nothing selected: nothing to star");
+
+                // Search reaches presets and help as well
+                fresh.setSearchText ("lag");
+                expect (fresh.getVisibleNames().contains ("Learn"), "search finds help topics");
+                fresh.setSearchText ("hall");
+                expect (fresh.getVisibleNames().contains ("Hall"), "search finds effect presets");
+                fresh.setSearchText ({});
+
+                props.setValue ("ezBrowserFavourites", savedFavourites);
+                props.setValue ("ezBrowserRecent", savedRecent);
+            }
+
+            beginTest ("Browser drags: a pattern or plug-in carries what it is, and is found again");
+            {
+                expectEquals (BrowserDrag::patternIn (BrowserDrag::describePattern ("Trap")), juce::String ("Trap"));
+                expect (BrowserDrag::patternIn (BrowserDrag::describe ({ "C:/a.wav" })).isEmpty(), "a sound isn't a pattern");
+
+                Session::PluginChoice eq { "EQ", te::EqualiserPlugin::xmlTypeName, {}, "EQ & Filter" };
+                eq.preset = "Kick";
+                const auto found = BrowserDrag::pluginIn (BrowserDrag::describePlugin (eq, false), session);
+                expect (found.has_value() && found->first.pluginType == te::EqualiserPlugin::xmlTypeName && found->first.preset == "Kick"
+                        && ! found->second, "the effect and its preset come back");
+                expect (! BrowserDrag::pluginIn (BrowserDrag::describePattern ("Trap"), session).has_value());
+            }
+        }
+
         /** Our built-in effects: every one adds, has saved controls, renders cleanly; the limiter holds its ceiling. */
         void runEffectTests (Session& session, const juce::File& songFile)
         {
@@ -3639,7 +3975,7 @@ namespace ez::Tests
                     continue;
 
                 expect (session.createSongFromTemplate ("Genre " + t.name, t), t.name + ": " + session.getLastError());
-                expect (session.getNumAudioTracks() >= 2, t.name);
+                expect (session.getNumAudioTracks() >= (t.name == "Voice-over" ? 1 : 2), t.name);   // a voice-over is one voice
 
                 for (int i = 0; i < session.getNumAudioTracks(); ++i)
                     if (session.getTrackName (i).startsWith ("Guitar:") || session.getTrackName (i).startsWith ("Bass guitar"))

@@ -27,6 +27,12 @@ namespace ez::DrumKits
             { "Garage Punk",     "Rock & punk", "Loud, open, a snare that cracks" },
             { "Metal Kit",       "Metal",       "Clicky kick for double kick and blasts, tight snare" },
             { "Hardcore Kit",    "Hardcore",    "Heavy, driven, a fat snare for breakdowns" },
+            { "Techno Kit",      "Techno",      "A long, driven kick, tight hats, a dry clap" },
+            { "Classic 808",     "Hip hop",     "The old-school boom: long kick, snappy snare, cowbell-bright hats" },
+            { "Afro Kit",        "Afrobeats",   "Warm short kick, bright rim and shakers for bouncing grooves" },
+            { "Pop Kit",         "Pop",         "Clean, punchy, radio-ready" },
+            { "Soft Jazz",       "Jazz & soul", "Soft kick, brushy snare, long cymbals" },
+            { "UK Garage",       "House",       "Skippy two-step kit: tight kick, crisp snare" },
         };
 
         const char* const padNames[numPads] =
@@ -69,6 +75,12 @@ namespace ez::DrumKits
             { 130, 60, 0.030f, 0.30f, 0.6f, 1.4f,   195, 0.09f, 0.26f, 10000, 0.70f,   0.045f, 8000, 0.50f, 2.4f,  100,   0.6f, 50, 1.2f,      0, 1.20f, 0.0f,    0 },
             { 220, 62, 0.012f, 0.18f, 1.2f, 1.8f,   240, 0.07f, 0.22f, 13000, 0.75f,   0.030f, 9500, 0.40f, 2.6f,  110,   0.5f, 55, 1.4f,      0, 1.15f, 0.0f,    1 },
             { 160, 55, 0.025f, 0.28f, 0.9f, 1.9f,   210, 0.08f, 0.30f,  9000, 0.80f,   0.040f, 8000, 0.45f, 2.2f,   95,   0.7f, 50, 1.6f,      0, 1.50f, 0.0f,   -1 },
+            { 170, 45, 0.040f, 0.55f, 0.6f, 1.8f,   200, 0.07f, 0.16f,  9000, 0.70f,   0.025f, 9500, 0.25f, 1.4f,   95,   1.0f, 45, 1.5f,      0, 1.40f, 0.0f,    0 },
+            { 120, 45, 0.060f, 0.90f, 0.3f, 1.0f,   220, 0.12f, 0.15f,  9000, 0.60f,   0.040f, 8000, 0.50f, 1.5f,   90,   2.8f, 43, 1.0f,      0, 1.00f, 0.0f,    0 },
+            { 150, 55, 0.030f, 0.25f, 0.4f, 1.2f,   260, 0.06f, 0.12f, 10000, 0.60f,   0.030f, 8500, 0.35f, 1.6f,  120,   1.2f, 48, 1.3f,      0, 1.10f, 0.0f,    2 },
+            { 165, 52, 0.035f, 0.35f, 0.55f, 1.3f,  200, 0.08f, 0.20f, 11000, 0.72f,   0.035f, 8500, 0.40f, 2.0f,  100,   1.0f, 48, 1.4f,      0, 1.10f, 0.0f,    0 },
+            { 110, 55, 0.030f, 0.30f, 0.15f, 1.0f,  180, 0.05f, 0.35f,  6000, 0.90f,   0.060f, 6500, 0.60f, 3.0f,  100,   0.6f, 50, 1.0f,  10000, 1.00f, 0.002f,  0 },
+            { 170, 50, 0.035f, 0.30f, 0.6f, 1.3f,   220, 0.06f, 0.14f, 10000, 0.70f,   0.030f, 9000, 0.30f, 1.5f,  105,   1.0f, 50, 1.4f,      0, 1.15f, 0.0f,    1 },
         };
 
         static_assert (std::size (kits) == std::size (flavours));

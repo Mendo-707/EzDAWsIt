@@ -4,6 +4,8 @@
 
 #include "SessionExportJobs.h"
 #include "Effects.h"
+#include "PluginPresets.h"
+#include "MidiPatterns.h"
 #include "MidiLearn.h"
 #include "VocalChain.h"
 #include "ArpeggiatorPlugin.h"
@@ -2001,7 +2003,8 @@ namespace ez
             return fail ("Could not add a track");
 
         auto* drums = dynamic_cast<DrumMachinePlugin*> (plugin.get());
-        track->setName (drums != nullptr ? juce::String (drumTrackName) : choice.name);
+        const bool sound = applyBuiltInPreset (*plugin, choice.preset);   // a sound from the browser: the track is named after it
+        track->setName (drums != nullptr ? juce::String (drumTrackName) : sound ? choice.preset : choice.name);
         track->pluginList.insertPlugin (plugin, 0, nullptr);
         routeMidiInputsTo (*track);
 
@@ -2013,6 +2016,71 @@ namespace ez
 
         log ("Added instrument track: " + choice.name);
         notifyStateChanged();   // the mixer adds its strip
+        return true;
+    }
+
+    bool Session::hasPluginOfType (int trackIndex, const juce::String& pluginType) const
+    {
+        if (auto* track = getTrack (trackIndex))
+            for (auto* plugin : track->pluginList)
+                if (plugin->getPluginType() == pluginType)
+                    return true;
+
+        return false;
+    }
+
+    bool Session::applyPluginPreset (int trackIndex, const juce::String& pluginType, const juce::String& presetName)
+    {
+        JUCE_ASSERT_MESSAGE_THREAD
+
+        auto* track = getTrack (trackIndex);
+
+        if (track == nullptr)
+            return fail ("No such track");
+
+        const auto preset = PluginPresets::findFactory (pluginType, presetName);
+
+        if (! preset.has_value())
+            return fail ("There's no preset called " + presetName);
+
+        for (auto* plugin : track->pluginList)
+        {
+            if (plugin->getPluginType() != pluginType)
+                continue;
+
+            // The settings the built-in presets of this type use (waveforms, switches...) go back to their defaults
+            juce::StringArray settings;
+
+            for (const auto& p : PluginPresets::getFactory (pluginType))
+                for (const auto& v : p.values)
+                    if (plugin->getAutomatableParameterByID (v.id) == nullptr)
+                        settings.addIfNotAlreadyThere (v.id);
+
+            beginUndoStep();
+            PluginPresets::apply (*plugin, preset->values, settings, true);
+            PluginPresets::setCurrentName (*plugin, preset->name, true);   // one undo: the sound and its name
+            notifyStateChanged();
+            return true;
+        }
+
+        return fail (track->getName() + " has no " + pluginType + " to load it on");
+    }
+
+    bool Session::applyBuiltInPreset (te::Plugin& plugin, const juce::String& presetName)
+    {
+        if (presetName.isEmpty())
+            return false;
+
+        const auto preset = PluginPresets::findFactory (plugin.getPluginType(), presetName);
+
+        if (! preset.has_value())
+        {
+            log ("No built-in preset \"" + presetName + "\" for " + plugin.getName());
+            return false;
+        }
+
+        PluginPresets::apply (plugin, preset->values, {}, false);   // a new plugin: everything else is at its default
+        PluginPresets::setCurrentName (plugin, preset->name);
         return true;
     }
 
@@ -2143,6 +2211,8 @@ namespace ez
                 chain->set (VocalChainPlugin::scale, key.minor ? 2.0f : 1.0f);
             }
         }
+
+        applyBuiltInPreset (*plugin, choice.preset);   // after the key: Tune's presets keep it
 
         // Effects go after the instrument/other effects, but before pre-fader sends and the track's fader
         int index = -1;
@@ -4318,6 +4388,107 @@ namespace ez
             clip->setName (name);   // same undo step as the clip
 
         selectClip (clip.get());
+        return true;
+    }
+
+    int Session::trackForPattern (const juce::String& patternName, int trackIndex) const
+    {
+        const auto* pattern = MidiPatterns::find (patternName);
+        auto* track = getTrack (trackIndex);
+
+        if (pattern == nullptr || track == nullptr || track->isFrozen (te::Track::anyFreeze))
+            return -1;
+
+        if (pattern->kind == MidiPatterns::Kind::drums)
+            return getDrumMachine (trackIndex) != nullptr ? trackIndex : -1;
+
+        if (getDrumMachine (trackIndex) != nullptr)
+            return -1;
+
+        for (auto* plugin : track->pluginList)
+            if (plugin->isSynth())
+                return trackIndex;
+
+        return -1;
+    }
+
+    bool Session::addMidiPattern (const juce::String& patternName, int trackIndex, te::TimePosition at)
+    {
+        JUCE_ASSERT_MESSAGE_THREAD
+
+        if (edit == nullptr)
+            return fail ("No song is open");
+
+        const auto* pattern = MidiPatterns::find (patternName);
+
+        if (pattern == nullptr)
+            return fail ("There's no pattern called " + patternName);
+
+        if (refuseWhileRecording ("adding clips"))
+            return false;
+
+        // From the bar line at or before the playhead, in the key there
+        const auto atBeat = edit->tempoSequence.toBeats (juce::jmax (te::TimePosition(), at)).inBeats();
+        const auto startBeat = getBarStartBeat (getBarAt (atBeat + 1.0e-6).first);
+        const auto key = getKeyAt (edit->tempoSequence.toTime (te::BeatPosition::fromBeats (startBeat)));
+
+        auto target = trackForPattern (patternName, trackIndex);
+
+        if (target < 0)
+        {
+            // A new track that suits it (this begins the undo step the clip joins)
+            if (pattern->kind == MidiPatterns::Kind::drums)
+            {
+                static const std::pair<const char*, int> kitFor[] = {
+                    { "Trap", 1 }, { "Drill", 1 }, { "Drum & bass", 2 }, { "House", 4 }, { "Lo-fi", 5 }, { "Rock", 6 }, { "Punk", 6 },
+                    { "Metal", 7 }, { "Blast", 7 }, { "Half-time", 8 }, { "Techno", 9 }, { "R&B", 10 }, { "Afrobeats", 11 }, { "Reggaeton", 11 },
+                    { "Pop", 12 }, { "Jazz", 13 }, { "Funk", 12 }, { "UK garage", 14 } };
+                int kit = 0;
+
+                for (auto [prefix, k] : kitFor)
+                    if (pattern->name.startsWith (prefix))
+                        kit = k;
+
+                if (! addDrumMachineTrack (juce::jmin (kit, DrumKits::getNumKits() - 1)))
+                    return false;
+            }
+            else
+            {
+                PluginChoice synth { "Synth (4OSC)", te::FourOscPlugin::xmlTypeName, {} };
+                synth.preset = MidiPatterns::suggestedSound (*pattern);
+
+                if (! addInstrumentTrack (synth, false))
+                    return false;
+            }
+
+            target = getNumAudioTracks() - 1;
+        }
+        else
+        {
+            beginUndoStep();
+        }
+
+        auto* track = getTrack (target);
+        const auto start = edit->tempoSequence.toTime (te::BeatPosition::fromBeats (startBeat));
+        const auto end = edit->tempoSequence.toTime (te::BeatPosition::fromBeats (startBeat + pattern->lengthBeats));
+        auto clip = track != nullptr ? track->insertMIDIClip ({ start, end }, nullptr) : nullptr;
+
+        if (clip == nullptr)
+        {
+            edit->getUndoManager().undoCurrentTransactionOnly();   // a new track made for it goes too
+            return fail ("Could not create a MIDI clip");
+        }
+
+        clip->setName (pattern->name);
+        auto& um = edit->getUndoManager();
+
+        for (const auto& n : pattern->notes)
+            clip->getSequence().addNote (MidiPatterns::midiNoteFor (*pattern, n, key.root), te::BeatPosition::fromBeats (n.start),
+                                         te::BeatDuration::fromBeats (n.length), juce::jlimit (1, 127, n.velocity), 0, &um);
+
+        selectClip (clip.get());
+        log ("Added the " + pattern->name + " pattern on " + track->getName());
+        notifyStateChanged();
         return true;
     }
 

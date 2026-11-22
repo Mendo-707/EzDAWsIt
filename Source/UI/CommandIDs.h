@@ -156,6 +156,10 @@ namespace ez::CommandIDs
         bounceTrack,
 
         // Recording
-        toggleLowLatency
+        toggleLowLatency,
+
+        // Help and browser (later additions)
+        openHelpGuide,
+        browserFavourite
     };
 }
