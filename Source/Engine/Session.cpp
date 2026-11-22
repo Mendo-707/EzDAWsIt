@@ -1902,12 +1902,72 @@ namespace ez
         choices.add ({ "Synth (4OSC)", te::FourOscPlugin::xmlTypeName, {} });
         choices.add ({ "Sampler",      te::SamplerPlugin::xmlTypeName, {} });
         choices.add ({ "Drum Machine", DrumMachinePlugin::xmlTypeName, {} });
-
-        for (const auto& description : audioEngine.getEngine().getPluginManager().knownPluginList.getTypes())
-            if (description.isInstrument)
-                choices.add ({ description.name, te::ExternalPlugin::xmlTypeName, description });
-
+        addScannedPlugins (choices, true);
         return choices;
+    }
+
+    bool Session::isBundled (const juce::PluginDescription& description)
+    {
+        return juce::File (description.fileOrIdentifier).isAChildOf (AppPaths::getBundledPluginsFolder());
+    }
+
+    juce::String Session::categoryForBundled (const juce::PluginDescription& description)
+    {
+        // The EzDAW plug-ins we ship, by name (AETHER only says "Fx")
+        static const std::pair<const char*, const char*> known[] = { { "AETHER X1 Heritage", "Guitar & bass" },
+                                                                    { "StudioVoice Pro",    "Chains" } };
+
+        for (const auto& [name, category] : known)
+            if (description.name == name)
+                return category;
+
+        // Anything else: its VST3 sub-categories ("Fx|Distortion", "Fx|Dynamics"...), then its name
+        const auto text = (description.category + " " + description.name + " " + description.descriptiveName).toLowerCase();
+        const auto has = [&text] (std::initializer_list<const char*> words)
+        {
+            for (auto* w : words)
+                if (text.contains (w))
+                    return true;
+            return false;
+        };
+
+        if (has ({ "voice", "vocal", "channel strip" }))    return "Chains";
+        if (has ({ "amp", "guitar", "distortion", "bass" }))  return "Guitar & bass";
+        if (has ({ "dynamics", "compressor", "limiter" }))     return "Dynamics";
+        if (has ({ "eq", "filter" }))                          return "EQ & Filter";
+        if (has ({ "reverb", "delay", "spatial" }))            return "Space";
+        if (has ({ "pitch" }))                                 return "Pitch";
+        if (has ({ "modulation", "chorus", "phaser" }))        return "Modulation";
+        return "Colour";
+    }
+
+    void Session::addScannedPlugins (juce::Array<PluginChoice>& choices, bool instruments) const
+    {
+        const auto types = audioEngine.getEngine().getPluginManager().knownPluginList.getTypes();
+        juce::Array<juce::PluginDescription> bundled;
+
+        for (const auto& d : types)
+            if (d.isInstrument == instruments && isBundled (d))
+                bundled.add (d);
+
+        std::sort (bundled.begin(), bundled.end(), [] (const auto& a, const auto& b) { return a.name.compareNatural (b.name) < 0; });
+
+        for (const auto& d : bundled)
+            choices.add ({ d.name, te::ExternalPlugin::xmlTypeName, d, instruments ? juce::String() : categoryForBundled (d), true });
+
+        for (const auto& d : types)
+        {
+            if (d.isInstrument != instruments || isBundled (d))
+                continue;
+
+            const auto sameAsBundled = std::any_of (bundled.begin(), bundled.end(), [&d] (const juce::PluginDescription& b)
+            {
+                return b.name == d.name && b.manufacturerName == d.manufacturerName;
+            });
+
+            if (! sameAsBundled)   // your own installed copy of a bundled one: the bundled one stands for it
+                choices.add ({ d.name, te::ExternalPlugin::xmlTypeName, d });
+        }
     }
 
     bool Session::addInstrumentTrack (const InstrumentChoice& choice, bool openInstrumentWindow, int drumKitIndex)
@@ -2016,11 +2076,7 @@ namespace ez
         add ("Amp",          AmpPlugin::xmlTypeName);
         add ("Tuner",        TunerPlugin::xmlTypeName);
         add ("Arpeggiator",  ArpeggiatorPlugin::xmlTypeName);
-
-        for (const auto& description : audioEngine.getEngine().getPluginManager().knownPluginList.getTypes())
-            if (! description.isInstrument)
-                choices.add ({ description.name, te::ExternalPlugin::xmlTypeName, description });
-
+        addScannedPlugins (choices, false);
         return choices;
     }
 

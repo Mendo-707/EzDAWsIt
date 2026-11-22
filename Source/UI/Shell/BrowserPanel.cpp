@@ -42,6 +42,12 @@ namespace ez
                 { "Tremolo",      "Pulsing level, or a left-right sweep" },
                 { "Utility",      "Gain, stereo width, mono, phase flip" },
                 { "Vocal Chain",  "A whole vocal sound: six macros, eight presets" },
+                // The EzDAW plug-ins that ship with the app
+                { "AETHER X1 Heritage", "Guitar amp, pedals and cab" },
+                { "StudioVoice Pro",    "Vocal channel strip" },
+                { "Aurelia 290",        "Piano" },
+                { "HexaFold",           "Synth" },
+                { "Voxalis",            "Synth" },
             };
 
             for (auto [n, hint] : hints)
@@ -393,13 +399,13 @@ namespace ez
                                 if (! std::exchange (shownHeader, true))
                                     add ({ Kind::header, effectCategory });
 
-                                addChoice (c, describeBuiltIn (c.name));
+                                addChoice (c, describeBuiltIn (c.name).isNotEmpty() ? describeBuiltIn (c.name) : juce::String ("EzDAW plug-in"));
                             }
                     }
 
                 for (const auto& c : choices)
                 {
-                    const bool isPlugin = c.pluginType == te::ExternalPlugin::xmlTypeName;
+                    const bool isPlugin = c.pluginType == te::ExternalPlugin::xmlTypeName && ! c.bundled;   // bundled = built-in
 
                     if (! instruments && ! isPlugin)
                         continue;   // listed under its category above
@@ -410,7 +416,8 @@ namespace ez
                         shownPluginHeader = true;
                     }
 
-                    addChoice (c, isPlugin ? c.description.manufacturerName : describeBuiltIn (c.name));
+                    const auto hint = describeBuiltIn (c.name);
+                    addChoice (c, isPlugin ? c.description.manufacturerName : (hint.isNotEmpty() ? hint : juce::String ("EzDAW plug-in")));
                 }
 
                 if (! shownPluginHeader)

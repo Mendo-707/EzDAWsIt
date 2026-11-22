@@ -112,6 +112,16 @@ if exist "build\EzDAWsIt_artefacts\Release\EzDAWsIt.pdb" copy /y "build\EzDAWsIt
 rem The licences sit next to the exe, where Help > About finds them
 copy /y "LICENSE.txt" "app\LICENSE.txt" >> "%LOG%" 2>&1
 copy /y "installer\THIRD-PARTY-NOTICES.txt" "app\THIRD-PARTY-NOTICES.txt" >> "%LOG%" 2>&1
+rem The EzDAW plug-ins (AETHER X1, Aurelia 290, StudioVoice Pro, HexaFold, Voxalis) ship in app\Plugins.
+rem bundled-plugins\gather-plugins.bat collects their builds; they are never in git or the source zip.
+if exist "bundled-plugins\" (
+    robocopy "bundled-plugins" "app\Plugins" /MIR /XF gather-plugins.bat gather-log.txt /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1
+    if errorlevel 8 (
+        >> "%LOG%" echo Could not copy the bundled plug-ins to app\Plugins
+        echo Could not copy the bundled plug-ins - is EzDAWsIt open?
+    )
+)
+(call )
 >> "%LOG%" echo === BUILD SUCCEEDED %date% %time% ===
 
 rem ---------- Self-tests (never touch your real songs) ----------

@@ -1724,7 +1724,7 @@ namespace ez
             {
                 const auto& choice = choices.getReference (i);
 
-                if (choice.pluginType == te::ExternalPlugin::xmlTypeName && ! shownPluginHeader)
+                if (choice.pluginType == te::ExternalPlugin::xmlTypeName && ! choice.bundled && ! shownPluginHeader)   // bundled sit with the built-ins
                 {
                     menu.addSectionHeader ("Plugin instruments");
                     shownPluginHeader = true;

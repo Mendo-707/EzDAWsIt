@@ -231,11 +231,18 @@ namespace ez
             juce::String pluginType;                 // a te::Plugin xmlTypeName
             juce::PluginDescription description;     // only for VST3/AU plugins
             juce::String category = {};              // effects: "Dynamics", "EQ & Filter"... (Effects::categories); VST3s: empty
+            bool bundled = false;                    // ships with EzDAWsIt (the EzDAW plug-ins): listed with the built-ins
         };
+
+        /** True for a plug-in in the app's own Plugins folder (AppPaths::getBundledPluginsFolder). */
+        static bool isBundled (const juce::PluginDescription&);
+        /** Where a bundled effect goes in the effect categories (an amp to Guitar & bass, a vocal strip to Chains...). */
+        static juce::String categoryForBundled (const juce::PluginDescription&);
 
         using InstrumentChoice = PluginChoice;
 
-        /** Built-in instruments first, then every scanned plugin instrument. */
+        /** Built-in instruments first, then the bundled EzDAW ones, then every other scanned plugin instrument
+            (a copy of a bundled one installed elsewhere too is left out: the bundled one stands for it). */
         juce::Array<InstrumentChoice> getAvailableInstruments() const;
 
         /** Adds a track with this instrument, sends every MIDI input to it and arms it, so playing
@@ -1008,6 +1015,7 @@ namespace ez
         void removeListener (Listener* l)                   { listeners.remove (l); }
 
     private:
+        void addScannedPlugins (juce::Array<PluginChoice>&, bool instruments) const;   // bundled first, then the rest
         bool lowLatency = false, applyingLowLatency = false, warnedAboutDriver = false;
         void applyLowLatency();
         static void clearLatencyMarks (juce::ValueTree&);   // a copy for a fingerprint, or a song just opened

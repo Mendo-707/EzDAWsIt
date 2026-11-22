@@ -273,6 +273,7 @@ namespace ez::Tests
             runMixTests (session, songFile);
             runAutomationTests (session, songFile);
             runEffectTests (session, songFile);
+            runBundledPluginTests (*engine, session, testFolder.folder);
             runMasterTests (session, testFolder.folder);
             runSampleLibraryTests (*engine, testFolder.folder);
             runPresetTests (session, testFolder.folder);
@@ -2026,6 +2027,92 @@ namespace ez::Tests
 
             expectEquals ((int) session.getTimeSigMarkers().size(), 1);
             expectEquals (session.getTimeSigAt (te::TimePosition()).first, 4);
+        }
+
+        /** The EzDAW plug-ins ship in the app's Plugins folder and must show up as built-ins: with the
+            built-in instruments, and in the effect category that fits (an amp in Guitar & bass), not lost at
+            the bottom of the VST3 list. A copy the user also installed elsewhere must not show twice. */
+        void runBundledPluginTests (AudioEngine& engine, Session& session, const juce::File& folder)
+        {
+            beginTest ("Bundled EzDAW plug-ins are listed with the built-ins, in the right category, once");
+
+            const auto bundledFolder = folder.getChildFile ("Plugins");
+            AppPaths::setBundledPluginsFolderOverride (bundledFolder);
+
+            const auto describe = [] (const juce::String& pluginName, const juce::String& maker, bool instrument, const juce::File& file, const juce::String& cat)
+            {
+                juce::PluginDescription d;
+                d.name = pluginName;
+                d.manufacturerName = maker;
+                d.pluginFormatName = "VST3";
+                d.isInstrument = instrument;
+                d.fileOrIdentifier = file.getFullPathName();
+                d.category = cat;
+                d.uniqueId = d.deprecatedUid = (int) (juce::String (pluginName + file.getFullPathName()).hashCode());
+                return d;
+            };
+
+            const auto amp     = describe ("AETHER X1 Heritage", "Aether Audio", false, bundledFolder.getChildFile ("AETHER X1 Heritage.vst3"), "Fx");
+            const auto vocal   = describe ("StudioVoice Pro", "StudioVoice Audio", false, bundledFolder.getChildFile ("StudioVoice Pro.vst3"), "Fx|Vocal|Channel Strip");
+            const auto piano   = describe ("Aurelia 290", "Aurelia Acoustics", true, bundledFolder.getChildFile ("Aurelia 290.vst3"), "Instrument|Synth");
+            const auto ampCopy = describe ("AETHER X1 Heritage", "Aether Audio", false, folder.getChildFile ("Common Files/VST3/AETHER X1 Heritage.vst3"), "Fx");
+            const auto other   = describe ("Someone Else's Delay", "Other Co", false, folder.getChildFile ("Common Files/VST3/Other.vst3"), "Fx|Delay");
+
+            auto& list = engine.getEngine().getPluginManager().knownPluginList;
+
+            for (const auto& d : { amp, vocal, piano, ampCopy, other })
+                list.addType (d);
+
+            expect (Session::isBundled (amp) && Session::isBundled (piano));
+            expect (! Session::isBundled (ampCopy) && ! Session::isBundled (other));
+            expectEquals (Session::categoryForBundled (amp), juce::String ("Guitar & bass"));
+            expectEquals (Session::categoryForBundled (vocal), juce::String ("Chains"));
+            expectEquals (Session::categoryForBundled (describe ("New Verb", "EzDAW", false, {}, "Fx|Reverb")), juce::String ("Space"));
+
+            const auto effects = session.getAvailableEffects();
+            int ampCount = 0, otherIndex = -1, ampIndex = -1;
+
+            for (int i = 0; i < effects.size(); ++i)
+            {
+                const auto& c = effects.getReference (i);
+
+                if (c.name == amp.name)
+                {
+                    ++ampCount;
+                    ampIndex = i;
+                    expect (c.bundled, "the amp in the list must be the bundled one");
+                    expectEquals (c.category, juce::String ("Guitar & bass"), "so it sits with the built-in Amp");
+                }
+
+                if (c.name == other.name)
+                {
+                    otherIndex = i;
+                    expect (! c.bundled && c.category.isEmpty(), "other people's plug-ins stay in the VST3 list");
+                }
+            }
+
+            expectEquals (ampCount, 1, "an installed copy of a bundled plug-in must not be listed twice");
+            expect (ampIndex >= 0 && ampIndex < otherIndex, "bundled come before the other scanned plug-ins");
+
+            const auto instruments = session.getAvailableInstruments();
+            int pianoIndex = -1;
+
+            for (int i = 0; i < instruments.size(); ++i)
+                if (instruments.getReference (i).name == piano.name)
+                    pianoIndex = i;
+
+            expectEquals (pianoIndex, 3, "right after the three built-in instruments");
+            expect (instruments[pianoIndex].bundled);
+
+            beginTest ("Bundled plug-ins: an empty or missing Plugins folder registers nothing and doesn't fail");
+            expectEquals (engine.registerBundledPlugins(), 0);
+            expect (bundledFolder.createDirectory());
+            expectEquals (engine.registerBundledPlugins(), 0);
+
+            for (const auto& d : { amp, vocal, piano, ampCopy, other })
+                list.removeType (d);
+
+            AppPaths::setBundledPluginsFolderOverride (juce::File());
         }
 
         /** Our built-in effects: every one adds, has saved controls, renders cleanly; the limiter holds its ceiling. */

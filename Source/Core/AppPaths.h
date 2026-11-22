@@ -34,6 +34,11 @@ namespace ez::AppPaths
     /** Songs opened lately, newest first (up to 10, only ones that still exist). */
     juce::Array<juce::File> getRecentSongs();
 
+    /** Plug-ins that ship with EzDAWsIt (the EzDAW plug-ins): the "Plugins" folder next to the app.
+        They're registered at start-up and listed with the built-in instruments and effects. */
+    juce::File getBundledPluginsFolder();
+    void setBundledPluginsFolderOverride (const juce::File&);   // tests only; {} to reset
+
     /** The song named on a command line (double-clicking a song in Explorer, or "Open with"),
         or {} if there is none that exists. Quoted and unquoted paths both work. */
     juce::File findSongInCommandLine (const juce::String& commandLine);

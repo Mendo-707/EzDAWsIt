@@ -17,6 +17,28 @@ namespace ez::AppPaths
         }
     }
 
+    namespace
+    {
+        juce::File& bundledOverride()
+        {
+            static juce::File folder;
+            return folder;
+        }
+    }
+
+    juce::File getBundledPluginsFolder()
+    {
+        if (bundledOverride() != juce::File())
+            return bundledOverride();
+
+        return juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getChildFile ("Plugins");
+    }
+
+    void setBundledPluginsFolderOverride (const juce::File& folder)
+    {
+        bundledOverride() = folder;
+    }
+
     void setRootFolderOverride (const juce::File& folder)
     {
         rootOverride() = folder;

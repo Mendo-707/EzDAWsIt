@@ -63,6 +63,8 @@ Source: "..\app\EzDAWsIt.pdb";           DestDir: "{app}"; Flags: ignoreversion 
 Source: "..\LICENSE.txt";                DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD-PARTY-NOTICES.txt";       DestDir: "{app}"; Flags: ignoreversion
 Source: "README.txt";                    DestDir: "{app}"; Flags: ignoreversion isreadme
+; The EzDAW plug-ins and their notices (build.bat copies them to app\Plugins)
+Source: "..\app\Plugins\*";            DestDir: "{app}\Plugins"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Icons]
 Name: "{autoprograms}\{#AppName}";                Filename: "{app}\{#AppExe}"

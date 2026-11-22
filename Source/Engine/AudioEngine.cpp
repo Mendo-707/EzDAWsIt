@@ -3,6 +3,7 @@
 */
 
 #include "AudioEngine.h"
+#include "../Core/AppPaths.h"
 #include "DrumMachinePlugin.h"
 #include "Effects.h"
 #include "Meters.h"
@@ -190,6 +191,7 @@ namespace ez
         engine.getPluginManager().createBuiltInType<DrumMachinePlugin>();   // before any song loads one
         engine.getPluginManager().createBuiltInType<MasterTapPlugin>();
         Effects::registerAll (engine);   // our own effects (Effects.h)
+        registerBundledPlugins();         // the EzDAW plug-ins in the Plugins folder
         getDeviceManager().addAudioCallback (testTone.get());
         getDeviceManager().addAudioCallback (preview.get());
 
@@ -245,6 +247,42 @@ namespace ez
         }
 
         log ("First run: picked " + pick + " for low-latency playing: " + describeCurrentDevice());
+    }
+
+    int AudioEngine::registerBundledPlugins()
+    {
+        const auto folder = AppPaths::getBundledPluginsFolder();
+
+        if (! folder.isDirectory())
+            return 0;
+
+        auto& pm = engine.getPluginManager();
+        juce::AudioPluginFormat* vst3 = nullptr;
+
+        for (int i = 0; i < pm.pluginFormatManager.getNumFormats(); ++i)
+            if (pm.pluginFormatManager.getFormat (i)->getName() == "VST3")
+                vst3 = pm.pluginFormatManager.getFormat (i);
+
+        if (vst3 == nullptr)
+            return 0;
+
+        int scanned = 0;
+
+        for (const auto& bundle : folder.findChildFiles (juce::File::findFilesAndDirectories, false, "*.vst3"))
+        {
+            const auto path = bundle.getFullPathName();
+
+            if (pm.knownPluginList.isListingUpToDate (path, *vst3))
+                continue;   // known and unchanged: nothing to do at start-up
+
+            juce::OwnedArray<juce::PluginDescription> found;
+            pm.knownPluginList.scanAndAddFile (path, true, found, *vst3);
+            ++scanned;
+            log ("Bundled plug-in " + bundle.getFileName() + (found.isEmpty() ? juce::String (": couldn't be loaded")
+                                                                             : ": " + found.getFirst()->name));
+        }
+
+        return scanned;
     }
 
     juce::String AudioEngine::pickLowLatencyDriver (const juce::StringArray& typesWithDevices, const juce::String& current)

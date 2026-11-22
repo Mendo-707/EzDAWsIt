@@ -49,6 +49,11 @@ namespace ez
         static juce::String pickLowLatencyDriver (const juce::StringArray& typesWithDevices, const juce::String& current);
         /** The buffer to use from what a device offers: the one nearest 128 samples (a few ms, safe on most machines). */
         static int pickBufferSize (const juce::Array<int>& available, int wanted = 128);
+
+        /** Registers the plug-ins that ship with EzDAWsIt (every .vst3 in AppPaths::getBundledPluginsFolder()).
+            Each is scanned only when new or changed since the last run, through Tracktion's scanner (out of
+            process where available, so a broken one can't take the app down). Returns how many it scanned. */
+        int registerBundledPlugins();
         juce::AudioDeviceManager& getDeviceManager();
 
         /** Turns on every audio and MIDI input so any of them can be picked on a track. */

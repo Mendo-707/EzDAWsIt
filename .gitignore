@@ -6,3 +6,4 @@ build-log.txt
 test-results.txt
 setup-report.txt
 dist/
+bundled-plugins/
