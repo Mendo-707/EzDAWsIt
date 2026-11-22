@@ -539,7 +539,7 @@ namespace ez::dsp
             diff.assign ((size_t) maxLag + 2, 0.0f);
             grain = pendingGrain = (float) (sr * 0.03);   // 30 ms grains to start
             maxGrain = (float) (sr * 0.04);
-            latency = (int) std::ceil (maxGrain * 0.5f) + 2;   // the taps' average delay, whatever the grain
+            latency = latencyFor (sr);   // the taps' average delay, whatever the grain
             const auto lineLength = (int) std::ceil (sr * 0.1) + 4;
             line.setSize (2, lineLength, false, true, false);
             line.clear();
@@ -554,6 +554,9 @@ namespace ez::dsp
         }
 
         int getLatencySamples() const noexcept     { return latency; }
+
+        /** The delay at a sample rate, known before prepare() (the host asks before playing starts). */
+        static int latencyFor (double sr) noexcept { return (int) std::ceil ((float) (sr * 0.04) * 0.5f) + 2; }
         float getDetectedHz() const noexcept       { return detectedHz; }
 
         void process (float* const* ch, int numChannels, int numSamples) noexcept

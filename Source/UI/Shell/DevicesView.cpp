@@ -126,10 +126,13 @@ namespace ez
 
             g.setColour (Theme::textDim);
             g.setFont (Theme::font (Theme::smallFontSize - 0.5f));
-            const auto subtitle = kind == Kind::instrument ? juce::String (juce::CharPointer_UTF8 ("Instrument \xc2\xb7 ")) + info.maker
-                                : kind == Kind::fader      ? juce::String ("Fader and pan")
-                                : dimmed                   ? juce::String (juce::CharPointer_UTF8 ("Bypassed \xc2\xb7 ")) + info.maker
-                                                           : info.maker;
+            const auto dot = juce::String (juce::CharPointer_UTF8 (" \xc2\xb7 "));
+            const auto delay = info.latencyMs >= 1.0 ? dot + juce::String (info.latencyMs, 1) + " ms" : juce::String();   // what it adds to live playing
+            const auto subtitle = kind == Kind::instrument  ? "Instrument" + dot + info.maker + delay
+                                : kind == Kind::fader       ? juce::String ("Fader and pan")
+                                : info.skippedForLatency    ? "Skipped for low latency" + delay
+                                : dimmed                    ? "Bypassed" + dot + info.maker
+                                                            : info.maker + delay;
             g.drawText (subtitle, content.removeFromTop (16), juce::Justification::centredLeft, true);
 
             // A small picture of what it is: its live curve where it has one, else an icon

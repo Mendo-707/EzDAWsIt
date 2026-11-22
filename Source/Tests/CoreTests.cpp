@@ -28,6 +28,7 @@
 #include "../UI/PluginWindows.h"
 #include "../UI/Widgets.h"
 #include "../Engine/ArpeggiatorPlugin.h"
+#include "../UI/Shell/StatusBar.h"
 
 namespace ez::Tests
 {
@@ -3440,6 +3441,108 @@ namespace ez::Tests
                     expect (session.getLastError().contains ("instrument"), session.getLastError());
                     expect (session.getEffectNames (plainTrack) == effectsBefore, "and nothing was added");
                 }
+            }
+
+            beginTest ("Low-latency monitoring: delaying effects go off on tracks you aren't playing on, exactly what was on comes back, and it's never an edit");
+            {
+                session.setLowLatencyMonitoring (false);
+                auto& editRef = *session.getEdit();
+                int a = -1, b = -1;
+
+                for (int t = 0; t < session.getNumAudioTracks(); ++t)
+                {
+                    if (session.getTrackKind (t) != Session::TrackKind::normal)
+                        continue;
+
+                    if (a < 0)
+                        a = t;
+                    else if (b < 0)
+                        b = t;
+                }
+
+                Session::PluginChoice tune, eq;
+                for (const auto& c : session.getAvailableEffects())
+                {
+                    if (c.pluginType == TunePlugin::xmlTypeName)               tune = c;
+                    if (c.pluginType == te::EqualiserPlugin::xmlTypeName)      eq = c;
+                }
+
+                expect (session.addEffect (a, tune, false) && session.addEffect (a, eq, false) && session.addEffect (b, tune, false), session.getLastError());
+                const auto effectsOf = [&] (int track)
+                {
+                    juce::Array<te::Plugin*> list;
+                    for (const auto& info : session.getEffectInfo (track))
+                        list.add (session.findEffect (track, info.id));
+                    return list;
+                };
+                const auto tuneA = effectsOf (a)[effectsOf (a).size() - 2];
+                const auto eqA = effectsOf (a).getLast();
+                const auto tuneB = effectsOf (b).getLast();
+                expect (session.setEffectEnabled (b, effectsOf (b).size() - 1, false), "turned off by hand");
+
+                expect (tuneA->getLatencySeconds() * 1000.0 > 15.0, "pitch correction adds about 20 ms, known before playing: "
+                        + juce::String (tuneA->getLatencySeconds() * 1000.0));
+                expect (session.getMonitoringDelay().effectsMs >= 15.0, "and live playing waits for it");
+                expect (session.saveSong(), session.getLastError());
+                const auto undoSteps = editRef.getUndoManager().getUndoDescriptions().size();
+
+                session.setLowLatencyMonitoring (true);
+                expect (! tuneA->isEnabled() && Session::isSkippedForLowLatency (*tuneA), "the delaying effect is skipped");
+                expect (eqA->isEnabled() && ! Session::isSkippedForLowLatency (*eqA), "an effect without delay stays on");
+                expect (! tuneB->isEnabled() && ! Session::isSkippedForLowLatency (*tuneB), "one you'd switched off isn't touched");
+                expect (session.getMonitoringDelay().effectsMs < Session::lowLatencyLimitMs, "live playing no longer waits");
+                expectEquals (editRef.getUndoManager().getUndoDescriptions().size(), undoSteps, "not an undo step");
+                expect (! session.hasUnsavedChanges(), "and not a change to the song");
+                expect (session.getEffectInfo (a)[effectsOf (a).size() - 2].skippedForLatency, "the device card can say so");
+
+                expect (! session.setEffectEnabled (a, effectsOf (a).size() - 2, true), "can't switch a skipped effect on");
+                expect (session.getLastError().contains ("low-latency"), session.getLastError());
+
+                // Saved while skipped: the file carries the mark; opened with the mode off, the effect is on again
+                expect (session.saveSong(), session.getLastError());
+                const auto file = session.getSongFile();
+                session.setLowLatencyMonitoring (false);
+                expect (tuneA->isEnabled() && ! Session::isSkippedForLowLatency (*tuneA), "back on, exactly as it was");
+                expect (! tuneB->isEnabled(), "the one switched off by hand stays off");
+                expect (session.openSong (file), session.getLastError());
+                int skippedAfterOpen = 0;
+
+                for (int t = 0; t < session.getNumAudioTracks(); ++t)
+                    for (auto* p : effectsOf (t))
+                        skippedAfterOpen += Session::isSkippedForLowLatency (*p) ? 1 : 0;
+
+                expectEquals (skippedAfterOpen, 0, "a song saved mid-skip opens with every effect as you left it");
+                expect (effectsOf (a)[effectsOf (a).size() - 2]->isEnabled(), "the pitch correction is on");
+                session.setLowLatencyMonitoring (false);
+            }
+
+            beginTest ("First run picks ASIO when there's an ASIO device, at the buffer nearest 128 samples");
+            {
+                expectEquals (AudioEngine::pickLowLatencyDriver ({ "Windows Audio", "ASIO" }, "Windows Audio"), juce::String ("ASIO"));
+                expect (AudioEngine::pickLowLatencyDriver ({ "Windows Audio", "DirectSound" }, "Windows Audio").isEmpty(), "no ASIO: leave it");
+                expect (AudioEngine::pickLowLatencyDriver ({ "ASIO" }, "ASIO").isEmpty(), "already ASIO");
+                expectEquals (AudioEngine::pickBufferSize ({ 32, 64, 128, 256, 512 }), 128);
+                expectEquals (AudioEngine::pickBufferSize ({ 96, 192, 480 }), 96);
+                expectEquals (AudioEngine::pickBufferSize ({ 112, 144 }), 112, "a tie: the smaller");
+                expectEquals (AudioEngine::pickBufferSize ({}), 0);
+            }
+
+            beginTest ("The delay readout: plain under 12 ms, amber above, red over 25, and it says how to fix it");
+            {
+                Session::MonitoringDelay d;
+                expect (StatusBar::describeDelay (d).isEmpty(), "no device: no readout");
+                d.hasDevice = true;
+                d.driver = "Windows Audio";
+                d.inputMs = 3.0;
+                d.outputMs = 4.0;
+                expectEquals (StatusBar::describeDelay (d), juce::String ("Delay 7.0 ms"));
+                expect (StatusBar::colourForDelay (d) == Theme::textDim);
+                expect (StatusBar::explainDelay (d, false).contains ("pick ASIO"), "Windows Audio: points to ASIO");
+                d.effectsMs = 10.0;
+                expect (StatusBar::colourForDelay (d) == Theme::warning);
+                expect (StatusBar::explainDelay (d, false).contains ("Ctrl+Alt+L"), "effects delaying: points to low-latency monitoring");
+                d.effectsMs = 20.0;
+                expect (StatusBar::colourForDelay (d) == Theme::danger);
             }
 
             beginTest ("Presets: every built-in template opens, with all its tracks and effects");

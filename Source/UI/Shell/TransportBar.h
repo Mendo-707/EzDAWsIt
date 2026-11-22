@@ -46,6 +46,7 @@ namespace ez
         IconButton loopButton   { "Loop", Icon::loop };
         IconButton clickButton  { "Click", Icon::metronome, "Click" };
         IconButton countInButton { "Count-in", Icon::countIn, "Count-in" };
+        IconButton lowLatencyButton { "Low-latency monitoring", Icon::bolt };
         IconButton punchInButton  { "Punch in", Icon::none, "Punch in" };
         IconButton punchOutButton { "Punch out", Icon::none, "Punch out" };
         IconButton snapButton   { "Snap", Icon::magnet, "Snap" };

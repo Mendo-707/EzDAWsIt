@@ -153,6 +153,9 @@ namespace ez::CommandIDs
         gridMenu,
 
         // Tracks (later additions)
-        bounceTrack
+        bounceTrack,
+
+        // Recording
+        toggleLowLatency
     };
 }

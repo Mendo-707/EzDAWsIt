@@ -268,6 +268,8 @@ namespace ez
             bool isBuiltIn = true, isEnabled = true;
             juce::String id;   // stays the same while the plugin exists: lets a view check it still means this one
             juce::String type = {};   // its te::Plugin xmlTypeName ("ezvocalchain" gets the rack card)
+            double latencyMs = 0;              // the delay it adds (look-ahead, pitch correction...)
+            bool skippedForLatency = false;    // switched off for now by low-latency monitoring
         };
 
         /** The track's effects, first to last (signal order). */
@@ -282,6 +284,36 @@ namespace ez
 
         /** Bypass: a switched-off effect passes the sound through untouched. Undoable. */
         bool setEffectEnabled (int trackIndex, int effectIndex, bool);
+
+        //==============================================================================
+        // Low-latency monitoring and the delay you hear (SessionLatency.cpp)
+
+        /** Effects adding more delay than this are skipped by low-latency monitoring. */
+        static constexpr double lowLatencyLimitMs = 3.0;
+
+        /** Low-latency monitoring: for live playing. Effects that add more than lowLatencyLimitMs are switched
+            off on every track you aren't recording on (and the master), so what you play comes back with only
+            the audio driver's delay. Armed tracks keep their whole chain (your amp stays on). Turning it off
+            puts back exactly what was on. Not an edit: no undo step, the song isn't marked changed, and a song
+            saved with effects skipped opens with them on. An app setting, remembered between runs. */
+        bool isLowLatencyMonitoring() const noexcept    { return lowLatency; }
+        void setLowLatencyMonitoring (bool);
+        static bool isSkippedForLowLatency (const te::Plugin&);
+
+        /** What you hear while playing live, from string to speaker. */
+        struct MonitoringDelay
+        {
+            bool hasDevice = false;
+            juce::String driver;           // "ASIO", "Windows Audio"...
+            bool lowLatencyDriver = false;  // ASIO
+            int bufferSamples = 0;
+            double inputMs = 0, outputMs = 0, bufferMs = 0, effectsMs = 0;
+            juce::StringArray effects;     // "Vocal Chain on Rap vocal: 20.0 ms", the slowest first
+            double totalMs() const noexcept { return inputMs + outputMs + effectsMs; }
+        };
+
+        MonitoringDelay getMonitoringDelay() const;
+
 
         /** Moves an effect to another place in the chain (both indexes among the effects). Undoable. */
         bool moveEffect (int trackIndex, int fromIndex, int toIndex);
@@ -976,6 +1008,9 @@ namespace ez
         void removeListener (Listener* l)                   { listeners.remove (l); }
 
     private:
+        bool lowLatency = false, applyingLowLatency = false, warnedAboutDriver = false;
+        void applyLowLatency();
+        static void clearLatencyMarks (juce::ValueTree&);   // a copy for a fingerprint, or a song just opened
         //==============================================================================
         AudioEngine& audioEngine;
         te::SelectionManager selectionManager;

@@ -31,6 +31,7 @@ namespace ez
                 case Icon::scissors:      return { { "M4 6A2.5 2.5 0 1 0 9 6A2.5 2.5 0 1 0 4 6Z" }, { "M4 18A2.5 2.5 0 1 0 9 18A2.5 2.5 0 1 0 4 18Z" },
                                                    { "M8.6 7.6L20 18" }, { "M8.6 16.4L20 6" } };
                 case Icon::eraser:        return { { "M4 15L14 5L19 10L11 18H7Z" }, { "M9 10L14 15" }, { "M11 21H20" } };
+                case Icon::bolt:          return { { "M13 2L4 14H11L10 22L20 9H13L13 2Z" } };
                 case Icon::snowflake:     return { { "M12 3V21" }, { "M4.2 7.5L19.8 16.5" }, { "M4.2 16.5L19.8 7.5" }, { "M9.5 4.5L12 7L14.5 4.5" }, { "M9.5 19.5L12 17L14.5 19.5" } };
                 case Icon::magnet:        return { { "M5 4V11A7 7 0 0 0 19 11V4" }, { "M9 4V11A3 3 0 0 0 15 11V4" }, { "M5 8H9" }, { "M15 8H19" } };
                 case Icon::undo:          return { { "M9 14L4 9L9 4" }, { "M4 9H14.5A5.5 5.5 0 0 1 14.5 20H11" } };

@@ -293,6 +293,7 @@ namespace ez
             { &returnButton, CommandIDs::returnToStart }, { &playButton, CommandIDs::togglePlay },
             { &recordButton, CommandIDs::toggleRecord },  { &loopButton, CommandIDs::toggleLoop },
             { &clickButton, CommandIDs::toggleClick },    { &countInButton, CommandIDs::toggleCountIn },
+            { &lowLatencyButton, CommandIDs::toggleLowLatency },
             { &snapButton, CommandIDs::toggleSnap },      { &undoButton, CommandIDs::undo },
             { &redoButton, CommandIDs::redo },
             { &punchInButton, CommandIDs::punchInHere }, { &punchOutButton, CommandIDs::punchOutHere },
@@ -500,7 +501,7 @@ namespace ez
                 if (lcd->isVisible())
                     total += lcd->getIdealWidth() + 8;
 
-            total += Theme::groupGap + clickButton.getIdealWidth (h) + 6 + countInButton.getIdealWidth (h) + 6;
+            total += Theme::groupGap + clickButton.getIdealWidth (h) + 6 + countInButton.getIdealWidth (h) + 6 + Theme::iconButtonWidth + 6;
 
             if (punchInButton.isVisible())
                 total += 4 + punchInButton.getIdealWidth (h) + punchOutButton.getIdealWidth (h);
@@ -577,6 +578,9 @@ namespace ez
             b->setBounds (fit (r.removeFromLeft (b->getIdealWidth (h))));
             r.removeFromLeft (6);
         }
+
+        lowLatencyButton.setBounds (fit (r.removeFromLeft (Theme::iconButtonWidth)));
+        r.removeFromLeft (6);
 
         if (punchInButton.isVisible())
         {

@@ -179,7 +179,7 @@ namespace ez
         explicit TunePlugin (te::PluginCreationInfo);
         EZ_EFFECT_NAMES (TunePlugin, "eztune", "Tune", "Tune")
         float getDetectedHz() const noexcept    { return detected.load(); }
-        double getLatencySeconds() override     { return corrector.getLatencySamples() / juce::jmax (1.0, sampleRate); }
+        double getLatencySeconds() override     { return dsp::PitchCorrector::latencyFor (sampleRate) / juce::jmax (1.0, sampleRate); }
     protected:
         void prepare (double, int) override     { corrector.prepare (sampleRate); }
         void process (float* const*, int, int) override;

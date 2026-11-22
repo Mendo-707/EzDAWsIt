@@ -205,7 +205,63 @@ namespace ez
         engine.getDeviceManager().addChangeListener (&deviceWatcher);
         deviceWatcher.onChange();
 
+        chooseLowLatencyDriverOnFirstRun();
         log ("Audio engine started: " + describeCurrentDevice() + " | main output: " + getMainOutputName());
+    }
+
+    void AudioEngine::chooseLowLatencyDriverOnFirstRun()
+    {
+        auto& props = engine.getPropertyStorage().getPropertiesFile();
+
+        // Once only (a driver picked in Setup afterwards is never overridden), and never for a headless engine
+        if (props.containsKey ("ezDriverChosen") || ! engine.getEngineBehaviour().autoInitialiseDeviceManager())
+            return;
+
+        props.setValue ("ezDriverChosen", true);
+        auto& dm = getDeviceManager();
+        juce::StringArray withDevices;
+
+        for (auto* type : dm.getAvailableDeviceTypes())
+        {
+            type->scanForDevices();
+
+            if (! type->getDeviceNames().isEmpty())
+                withDevices.add (type->getTypeName());
+        }
+
+        const auto current = dm.getCurrentAudioDevice() != nullptr ? dm.getCurrentAudioDevice()->getTypeName() : juce::String();
+        const auto pick = pickLowLatencyDriver (withDevices, current);
+
+        if (pick.isEmpty())
+            return;
+
+        dm.setCurrentAudioDeviceType (pick, true);
+
+        if (auto* device = dm.getCurrentAudioDevice())
+        {
+            auto setup = dm.getAudioDeviceSetup();
+            setup.bufferSize = pickBufferSize (device->getAvailableBufferSizes());
+            dm.setAudioDeviceSetup (setup, true);
+        }
+
+        log ("First run: picked " + pick + " for low-latency playing: " + describeCurrentDevice());
+    }
+
+    juce::String AudioEngine::pickLowLatencyDriver (const juce::StringArray& typesWithDevices, const juce::String& current)
+    {
+        return current != "ASIO" && typesWithDevices.contains ("ASIO") ? juce::String ("ASIO") : juce::String();
+    }
+
+    int AudioEngine::pickBufferSize (const juce::Array<int>& available, int wanted)
+    {
+        int best = 0;
+
+        for (auto size : available)
+            if (best == 0 || std::abs (size - wanted) < std::abs (best - wanted)
+                 || (std::abs (size - wanted) == std::abs (best - wanted) && size < best))   // a tie: the smaller, less delay
+                best = size;
+
+        return best;
     }
 
     AudioEngine::~AudioEngine()

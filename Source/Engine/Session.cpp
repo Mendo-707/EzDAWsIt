@@ -60,6 +60,7 @@ namespace ez
     {
         meters = std::make_unique<MeterBank> (*this);
         midiLearn = std::make_unique<MidiLearn> (audioEngine, *this);
+        lowLatency = audioEngine.getEngine().getPropertyStorage().getPropertiesFile().getBoolValue ("ezLowLatencyMonitoring", false);
     }
 
     Session::~Session()
@@ -281,6 +282,7 @@ namespace ez
         unsavedCache = false;
 
         edit->playInStopEnabled = true;
+        clearLatencyMarks (edit->state);   // saved while low-latency monitoring skipped effects: they're on again
 
         if (isNewSong)
         {
@@ -389,6 +391,7 @@ namespace ez
         // As getContentFingerprint, without asking plugins for their settings (that can be slow, or glitch)
         auto state = edit->state.createCopy();
         state.removeChild (state.getChildWithName (te::IDs::TRANSPORT), nullptr);
+        clearLatencyMarks (state);   // effects low-latency monitoring skips for now aren't a change to the song
         return state.toXmlString().hashCode64();
     }
 
@@ -459,6 +462,7 @@ namespace ez
         edit->flushState();
         auto state = edit->state.createCopy();
         state.removeChild (state.getChildWithName (te::IDs::TRANSPORT), nullptr);
+        clearLatencyMarks (state);   // effects low-latency monitoring skips for now aren't a change to the song
         return state.toXmlString().hashCode64();
     }
 
@@ -529,6 +533,7 @@ namespace ez
 
     void Session::notifyStateChanged()
     {
+        applyLowLatency();   // an arm, a new effect, an undo: what low-latency monitoring skips may have changed
         listeners.call ([] (Listener& l) { l.sessionStateChanged(); });
     }
 
@@ -2169,8 +2174,11 @@ namespace ez
         Session::DeviceInfo describePlugin (te::Plugin& plugin)
         {
             const bool isExternal = dynamic_cast<te::ExternalPlugin*> (&plugin) != nullptr;
-            return { plugin.getName(), isExternal ? plugin.getVendor() : juce::String ("Built-in"), ! isExternal, plugin.isEnabled(),
-                     plugin.itemID.toString(), plugin.getPluginType() };
+            Session::DeviceInfo info { plugin.getName(), isExternal ? plugin.getVendor() : juce::String ("Built-in"), ! isExternal, plugin.isEnabled(),
+                                       plugin.itemID.toString(), plugin.getPluginType() };
+            info.latencyMs = plugin.getLatencySeconds() * 1000.0;
+            info.skippedForLatency = Session::isSkippedForLowLatency (plugin);
+            return info;
         }
     }
 
@@ -2211,6 +2219,17 @@ namespace ez
 
         if (! juce::isPositiveAndBelow (effectIndex, effects.size()))
             return fail ("No such effect");
+
+        if (auto* skipped = effects[effectIndex]; isSkippedForLowLatency (*skipped))
+        {
+            if (shouldBeEnabled)
+                return fail (skipped->getName() + " adds " + juce::String (skipped->getLatencySeconds() * 1000.0, 1)
+                             + " ms of delay, so low-latency monitoring has it off. Turn that off (Ctrl+Alt+L) to hear it");
+
+            skipped->state.removeProperty ("ezLatencyBypass", nullptr);   // off by your choice now: stays off afterwards
+            notifyStateChanged();
+            return true;
+        }
 
         beginUndoStep();
         effects[effectIndex]->setEnabled (shouldBeEnabled);
@@ -3616,6 +3635,16 @@ namespace ez
 
         if (! hasInput && shouldBeArmed)
             return fail ("Pick an input for \"" + t->getName() + "\" first (in Routing)");
+
+        // Playing live on Windows Audio: say once how to get rid of the lag
+        if (shouldBeArmed && ! warnedAboutDriver)
+        {
+            if (const auto delay = getMonitoringDelay(); delay.hasDevice && ! delay.lowLatencyDriver)
+            {
+                warnedAboutDriver = true;
+                showHint (delay.driver + " adds delay to live playing: pick ASIO in Setup > Audio device (buffer 64-128) for lag-free monitoring");
+            }
+        }
 
         notifyStateChanged();
         return true;

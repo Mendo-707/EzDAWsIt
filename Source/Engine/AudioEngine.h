@@ -43,6 +43,12 @@ namespace ez
         ~AudioEngine();
 
         te::Engine& getEngine() noexcept                { return engine; }
+
+        /** The first-run driver choice: ASIO when it has a device and we're on something else (else empty).
+            Windows Audio adds a lot of delay to live playing; ASIO doesn't. */
+        static juce::String pickLowLatencyDriver (const juce::StringArray& typesWithDevices, const juce::String& current);
+        /** The buffer to use from what a device offers: the one nearest 128 samples (a few ms, safe on most machines). */
+        static int pickBufferSize (const juce::Array<int>& available, int wanted = 128);
         juce::AudioDeviceManager& getDeviceManager();
 
         /** Turns on every audio and MIDI input so any of them can be picked on a track. */
@@ -96,6 +102,7 @@ namespace ez
         juce::File getPreviewFile() const;
 
     private:
+        void chooseLowLatencyDriverOnFirstRun();
         /** The device list changed (inputs split differently, an interface plugged in): set the new inputs up. */
         struct DeviceListWatcher : public juce::ChangeListener
         {

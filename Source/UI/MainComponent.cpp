@@ -99,6 +99,7 @@ namespace ez
         detailPanel->setProblemHandler (problem);
         detailPanel->onHeightChanged = [this] { resized(); commandManager.commandStatusChanged(); };
         statusBar = std::make_unique<StatusBar> (audioEngine, session);
+        statusBar->setCommands (&commandManager);
 
         for (auto* c : std::initializer_list<juce::Component*> { appBar.get(), transportBar.get(), browser.get(), &timeline,
                                                                  detailPanel.get(), statusBar.get() })
@@ -216,7 +217,7 @@ namespace ez
     {
         using namespace CommandIDs;
         commands.addArray ({ newSong, openSong, saveSong, audioSetup, pluginList,
-                             togglePlay, toggleRecord, returnToStart, toggleClick, toggleCountIn,
+                             togglePlay, toggleRecord, returnToStart, toggleClick, toggleCountIn, toggleLowLatency,
                              addTrack, importAudio, undo, redo, addInstrumentTrack, routing,
                              deleteSelection, toggleLoop, toggleSnap, zoomIn, zoomOut,
                              copy, cut, paste, duplicate, selectAll, splitClips, deselectAll,
@@ -791,6 +792,15 @@ namespace ez
                 info.addDefaultKeypress ('c', 0);
                 info.setActive (hasSong);
                 info.setTicked (session.isClickEnabled());
+                break;
+
+            case CommandIDs::toggleLowLatency:
+                info.setInfo ("Low-latency monitoring",
+                              "Low-latency monitoring: for playing live. Switches off effects that add delay (over 3 ms) on every "
+                              "track you aren't recording on, so what you play comes straight back (Ctrl+Alt+L)", "Transport", 0);
+                info.addDefaultKeypress ('l', cmd | ModifierKeys::altModifier);
+                info.setActive (hasSong);
+                info.setTicked (session.isLowLatencyMonitoring());
                 break;
 
             case CommandIDs::toggleCountIn:
@@ -1482,6 +1492,18 @@ namespace ez
             case CommandIDs::returnToStart: session.returnToStart(); return true;
             case CommandIDs::toggleClick:   session.setClickEnabled (! session.isClickEnabled()); return true;
             case CommandIDs::toggleCountIn: session.setCountInEnabled (! session.isCountInEnabled()); return true;
+
+            case CommandIDs::toggleLowLatency:
+            {
+                const auto on = ! session.isLowLatencyMonitoring();
+                session.setLowLatencyMonitoring (on);
+                const auto delay = session.getMonitoringDelay();
+                session.showHint (on ? "Low-latency monitoring on: " + juce::String (delay.totalMs(), 1) + " ms from playing to hearing"
+                                       + (delay.lowLatencyDriver ? juce::String() : juce::String (". For less, pick ASIO in Setup > Audio device"))
+                                     : juce::String ("Low-latency monitoring off: every effect is back on"));
+                commandManager.commandStatusChanged();
+                return true;
+            }
             case CommandIDs::addTrack:      session.addAudioTrack(); return true;
             case CommandIDs::importAudio:   chooseAudioFileToImport(); return true;
             case CommandIDs::addInstrumentTrack: showInstrumentMenu (nullptr); return true;

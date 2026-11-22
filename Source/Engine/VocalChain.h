@@ -69,7 +69,7 @@ namespace ez
         static const std::vector<Preset>& getPresets();
 
         /** Tune always runs (passing the sound when off), so the delay it adds never changes. */
-        double getLatencySeconds() override     { return corrector.getLatencySamples() / juce::jmax (1.0, sampleRate); }
+        double getLatencySeconds() override     { return dsp::PitchCorrector::latencyFor (sampleRate) / juce::jmax (1.0, sampleRate); }
 
     protected:
         void prepare (double sampleRate, int maxBlockSize) override;
