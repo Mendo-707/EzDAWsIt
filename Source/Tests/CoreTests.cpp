@@ -34,6 +34,7 @@
 #include "../UI/CommandIDs.h"
 #include "../Engine/MidiPatterns.h"
 #include "../Engine/DrumKits.h"
+#include "../UI/WindowChrome.h"
 
 namespace ez::Tests
 {
@@ -2153,6 +2154,17 @@ namespace ez::Tests
             a user double-clicks expecting it to work, so each must exist, land where it should, and undo in one step. */
         void runLibraryTests (AudioEngine& engine, Session& session, const juce::File& songFile)
         {
+            beginTest ("Window chrome: Windows is asked for our app-bar colour in BGR order (RGB would paint the title bar brown-red)");
+            {
+                const auto c = WindowChrome::colours();
+                expectEquals ((int) c.caption, (int) (Theme::bar.getRed() | (Theme::bar.getGreen() << 8) | (Theme::bar.getBlue() << 16)));
+                expectEquals ((int) c.caption, 0x201916, "#161920 is 0x00201916 as a COLORREF");
+                expect (Theme::text.getBrightness() - Theme::bar.getBrightness() > 0.6f, "the title text reads clearly on the caption");
+
+                juce::Component plain;   // never on the desktop: nothing to tint, and it must not crash
+                expect (! WindowChrome::apply (plain));
+            }
+
             ensureSongIsOpen (session, songFile);
 
             if (! session.hasSong())

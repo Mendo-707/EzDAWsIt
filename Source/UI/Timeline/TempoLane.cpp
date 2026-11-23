@@ -232,6 +232,11 @@ namespace ez
                 Icons::draw (g, Icon::flag, r.removeFromLeft (12).withSizeKeepingCentre (10, 10).toFloat(), juce::Colours::white, 1.5f);
             }
 
+            // A chip behind the value, so the tempo line never runs through the text
+            const auto textWidth = (int) juce::GlyphArrangement::getStringWidth (font, item.text) + 8;
+            g.setColour (Theme::bar.withAlpha (0.92f));
+            g.fillRoundedRectangle (r.withWidth (juce::jmin (r.getWidth(), textWidth)).reduced (0, 3).toFloat(), 3.0f);
+
             g.setColour (isDragged ? Theme::selection : item.kind == Kind::key ? juce::Colour (0xffd8c7ff) : item.kind == Kind::timeSig ? juce::Colour (0xffbfe3ff) : juce::Colours::white);
             g.drawText (item.text, r.withTrimmedLeft (2), juce::Justification::centredLeft, false);
         }

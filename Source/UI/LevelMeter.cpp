@@ -89,7 +89,7 @@ namespace ez
 
     void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r, float levelDb, float holdDb) const
     {
-        g.setColour (Theme::display);
+        g.setColour (Theme::raised);   // the empty slot shows, so a silent meter still reads as a meter
         g.fillRect (r);
 
         const auto zone = [&] (float fromDb, float toDb, juce::Colour c)

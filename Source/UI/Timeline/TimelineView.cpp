@@ -1116,7 +1116,7 @@ namespace ez
         g.setFont (Theme::font (Theme::captionFontSize, true));
         g.drawText ("SECTIONS", juce::Rectangle<int> (10, 0, Theme::trackHeaderWidth - 20, Theme::sectionsLaneHeight),
                     juce::Justification::centredLeft, true);
-        g.drawText ("TEMPO  TIME  KEY", juce::Rectangle<int> (10, Theme::sectionsLaneHeight, Theme::trackHeaderWidth - 20, Theme::tempoLaneHeight),
+        g.drawText (juce::String (juce::CharPointer_UTF8 ("TEMPO \xc2\xb7 TIME \xc2\xb7 KEY")), juce::Rectangle<int> (10, Theme::sectionsLaneHeight, Theme::trackHeaderWidth - 20, Theme::tempoLaneHeight),
                     juce::Justification::centredLeft, true);
         g.drawVerticalLine (Theme::trackHeaderWidth - 1, 0.0f, (float) getHeight());
     }

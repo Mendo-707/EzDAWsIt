@@ -80,6 +80,7 @@ set(EZ_SOURCES
     Source/UI/MidiSetup.h           Source/UI/MidiSetup.cpp
     Source/UI/HelpViews.h           Source/UI/HelpViews.cpp
     Source/UI/HelpGuide.h           Source/UI/HelpGuide.cpp
+    Source/UI/WindowChrome.h        Source/UI/WindowChrome.cpp
     Source/UI/UiMode.h              Source/UI/UiMode.cpp
     Source/UI/MixerView.h           Source/UI/MixerView.cpp
     Source/UI/SetupView.h           Source/UI/SetupView.cpp

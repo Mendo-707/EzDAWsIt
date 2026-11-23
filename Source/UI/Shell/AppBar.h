@@ -45,10 +45,10 @@ namespace ez
         IconButton masterButton  { "Master view", Icon::none, "Master" };
         juce::ComboBox outputBox;
         IconButton sizeButton   { "Interface size: make text and controls bigger or smaller (Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 automatic)",
-                                  Icon::none, "Aa", IconButton::Style::ghost };
+                                  Icon::textSize, {}, IconButton::Style::ghost };
         IconButton setupButton  { "Setup", Icon::sliders, "Setup" };
         IconButton exportButton { "Export", Icon::exportFile, "Export" };
-        IconButton tunerButton  { "Tuner", Icon::none, "Tuner", IconButton::Style::ghost };
+        IconButton tunerButton  { "Tuner", Icon::tuner, "Tuner", IconButton::Style::ghost };
         IconButton easyButton   { "Easy view", Icon::none, "Easy" };
         IconButton proButton    { "Pro view", Icon::none, "Pro" };
         IconButton helpButton   { "Guided tour and help", Icon::help, {}, IconButton::Style::ghost };

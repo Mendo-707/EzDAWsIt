@@ -289,7 +289,7 @@ namespace ez::Screenshots
                                    { "mix",     CommandIDs::showMixView },
                                    { "master",  CommandIDs::showMasterView } };
 
-            for (auto size : { juce::Point<int> (1280, 760), juce::Point<int> (900, 500) })
+            for (auto size : { juce::Point<int> (1280, 760), juce::Point<int> (900, 500), juce::Point<int> (2048, 1088) })
             {
                 window.setSize (size.x, size.y);
                 const auto suffix = "-" + juce::String (size.x) + "x" + juce::String (size.y) + ".png";

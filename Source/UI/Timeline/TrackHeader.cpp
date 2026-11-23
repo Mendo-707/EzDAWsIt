@@ -167,6 +167,10 @@ namespace ez
         {
             newIcon = Icon::piano;
             newDevice = instrument->name;
+
+            // A track named after its instrument ("RIOT PRESS MK4  RIOT PRESS MK4") says it once
+            if (newDevice.trim().equalsIgnoreCase (session.getTrackName (trackIndex).trim()))
+                newDevice = {};
         }
         else
         {

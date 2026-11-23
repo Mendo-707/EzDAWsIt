@@ -25,7 +25,7 @@ Engine/  audio + song model, no UI: AudioEngine (owns te::Engine), Session (open
          SessionAutomation.cpp: lanes, Read/Write), Dsp.h (real-time DSP blocks), Effects (our built-in effects)
          PluginPresets (built-in sounds/effect presets), MidiPatterns (the browser's chords, basslines, beats)
 UI/      JUCE components only: MainComponent (owns commands), TopBar, Timeline/ (TimelineView, Ruler, TrackHeader, ClipView),
-         RoutingView, Dialogs, Theme, PluginWindows
+         RoutingView, Dialogs, Theme, PluginWindows, WindowChrome (tints native title bars dark)
          Shell/BrowserPanel (the browser), HelpGuide (F1: tutorials whose steps tick from the song, guides)
 Tests/   juce::UnitTest, category "EzDAWsIt"; built into the app, run headless via --run-tests
 Main.cpp start-up/shut-down order: Diagnostics -> LookAndFeel -> AudioEngine -> Session -> MainWindow

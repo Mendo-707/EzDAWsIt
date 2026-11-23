@@ -9,6 +9,7 @@
 */
 
 #include "UI/InterfaceScale.h"
+#include "UI/WindowChrome.h"
 #include "UI/UiMode.h"
 #include "Core/Common.h"
 #include "Core/Diagnostics.h"
@@ -85,6 +86,7 @@ namespace ez
             session     = std::make_unique<Session> (*audioEngine);
             InterfaceScale::applySaved (audioEngine->getEngine());   // before the window: it opens at the right size
             UiMode::initialise (audioEngine->getEngine());
+            WindowChrome::install();   // dark title bars on every window we open (Windows draws them white)
             mainWindow  = std::make_unique<MainWindow> (getApplicationName(), *audioEngine, *session);
             mainWindow->openSongFromSystem (AppPaths::findSongInCommandLine (commandLine));
 
@@ -146,6 +148,7 @@ namespace ez
                 setResizeLimits (Theme::minWindowWidth, Theme::minWindowHeight, 10000, 10000);
                 centreWithSize (getWidth(), getHeight());
                 setVisible (true);
+                WindowChrome::apply (*this);   // now, so the first frame isn't white
                 InterfaceScale::fitWindows();   // a big interface size on a small screen: keep the title bar reachable
             }
 
