@@ -434,15 +434,6 @@ namespace ez
 
     void VocalChainCard::paintOverChildren (juce::Graphics& g)
     {
-        // The "move earlier" arrow is the chevron flipped (as on the other cards)
-        auto area = leftButton.getBounds().toFloat();
-        g.setColour (leftButton.isEnabled() ? Theme::text : Theme::border);
-        juce::Path p;
-        p.startNewSubPath (area.getCentreX() + 3.0f, area.getCentreY() - 6.0f);
-        p.lineTo (area.getCentreX() - 3.0f, area.getCentreY());
-        p.lineTo (area.getCentreX() + 3.0f, area.getCentreY() + 6.0f);
-        g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
         // Arrows between the modules: the order the sound goes through them
         if (showInside)
             for (int i = 1; i < modules.size(); ++i)
@@ -470,10 +461,10 @@ namespace ez
         r.removeFromTop (6);
 
         // Bottom: move and Open
-        auto bottom = r.removeFromBottom (22);
+        auto bottom = r.removeFromBottom (24);   // the same footer as the other device cards
         leftButton.setBounds (bottom.removeFromLeft (24));
         rightButton.setBounds (bottom.removeFromLeft (24));
-        openButton.setBounds (bottom.removeFromRight (64));
+        openButton.setBounds (bottom.removeFromRight (72));
         r.removeFromBottom (6);
 
         // The body: the six macros, or (Chain on) what's inside, in the same space so nothing is squeezed out

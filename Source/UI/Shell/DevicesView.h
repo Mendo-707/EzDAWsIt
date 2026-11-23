@@ -4,7 +4,8 @@
     The highlighted track's devices, shown in the bottom panel:
       left:  the track's name, input and output
       right: its chain, left to right as the sound flows:
-             instrument → effects (bypass, move, open, remove) → Add effect → volume & pan
+             instrument → effects (bypass, move, open, remove; right-click, double-click) → Add effect → volume & pan
+      Effects dragged here from the browser go at the end of the chain.
     Rebuilds itself when the track, its effects or the routing change.
 */
 
@@ -16,6 +17,7 @@
 namespace ez
 {
     class DevicesView : public juce::Component,
+                        public juce::DragAndDropTarget,
                         private Session::Listener,
                         private juce::Timer
     {
@@ -28,6 +30,12 @@ namespace ez
 
         void paint (juce::Graphics&) override;
         void resized() override;
+
+        // Effects dragged from the browser land at the end of the chain
+        bool isInterestedInDragSource (const SourceDetails&) override;
+        void itemDragEnter (const SourceDetails&) override;
+        void itemDragExit (const SourceDetails&) override;
+        void itemDropped (const SourceDetails&) override;
 
     private:
         class DeviceCard;
@@ -42,7 +50,7 @@ namespace ez
 
         int track = -1;
         juce::String lastSignature;
-        bool checkSoon = true;
+        bool checkSoon = true, dropHover = false;
         int ticks = 0;
 
         juce::String makeSignature() const;
@@ -50,6 +58,7 @@ namespace ez
         void refreshRouting();
         void showAddEffectMenu (juce::Component& anchor);
         void report (bool ok, const juce::String& title);
+        void setDropHover (bool);
 
         void sessionSongChanged() override      { checkSoon = true; }
         void sessionStateChanged() override     { checkSoon = true; }   // never rebuild inside a card's own click

@@ -7,19 +7,25 @@
 #include "VocalChainCard.h"
 #include "../../Engine/VocalChain.h"
 #include "../PluginDisplays.h"
+#include "BrowserPanel.h"
 
 namespace ez
 {
     namespace
     {
         constexpr int inspectorWidth = 200;
-        constexpr int cardWidth = 164, cardGap = 22;   // the gap holds the flow arrow
-        constexpr int addCardWidth = 96, faderCardWidth = 108;
+        constexpr int cardGap = 22;                            // the gap holds the flow arrow
+        constexpr int addCardWidth = 64, faderCardWidth = 112;
+        constexpr int headerHeight = 38, footerHeight = 24;    // the same on every card, so titles and pictures line up
+
+        /** Wider cards in a taller panel, so the pictures keep their shape. */
+        int cardWidthFor (int height)   { return juce::jlimit (164, 240, juce::roundToInt (height * 0.82f)); }
     }
 
     //==============================================================================
     /** One device in the chain. Instrument cards have no bypass, move or remove. */
-    class DevicesView::DeviceCard : public juce::Component
+    class DevicesView::DeviceCard : public juce::Component,
+                                    public juce::SettableTooltipClient
     {
     public:
         enum class Kind { instrument, effect, add, fader };
@@ -42,14 +48,15 @@ namespace ez
 
             if (kind == Kind::effect || kind == Kind::instrument)
             {
-                openButton.setTooltip ("Show its controls");
+                openButton.setTooltip ("Show its controls (or double-click the card)");
                 addAndMakeVisible (openButton);
             }
 
             if (kind == Kind::add)
             {
-                addButton.setTooltip ("Add an effect to the end of the chain");
-                addAndMakeVisible (addButton);
+                // The whole card is the button (drawn by the card: a slim dashed slot, not a filled button)
+                setTooltip ("Add an effect to the end of the chain (or drag one here from the browser)");
+                setMouseCursor (juce::MouseCursor::PointingHandCursor);
             }
         }
 
@@ -59,9 +66,16 @@ namespace ez
         IconButton bypassButton { "Bypass", Icon::power, {}, IconButton::Style::ghost };
         IconButton openButton   { "Open", Icon::none, "Open" };
         IconButton removeButton { "Remove", Icon::close, {}, IconButton::Style::ghost };
-        IconButton leftButton   { "Move earlier", Icon::chevronRight, {}, IconButton::Style::ghost };   // drawn mirrored below
+        IconButton leftButton   { "Move earlier", Icon::chevronLeft, {}, IconButton::Style::ghost };
         IconButton rightButton  { "Move later", Icon::chevronRight, {}, IconButton::Style::ghost };
-        IconButton addButton    { "Add effect", Icon::plus, "Add effect", IconButton::Style::ghost };
+        std::function<void()> onAdd;   // the Add card: a click anywhere on it
+
+        /** A drag from the browser is over the chain: the Add card shows where it lands. */
+        void setDropHighlight (bool on)
+        {
+            if (std::exchange (dropHighlight, on) != on)
+                repaint();
+        }
 
         /** A live picture of the effect (its curve), in place of the icon. */
         void setPreview (std::unique_ptr<juce::Component> p)
@@ -69,7 +83,10 @@ namespace ez
             preview = std::move (p);
 
             if (preview != nullptr)
+            {
+                preview->setInterceptsMouseClicks (false, false);   // clicks reach the card: double-click opens, right-click menus
                 addAndMakeVisible (*preview);
+            }
         }
 
         /** The fader card shows the track's volume (dB) and pan (-1..1). */
@@ -78,12 +95,9 @@ namespace ez
         juce::Rectangle<int> pictureArea() const
         {
             auto content = getLocalBounds().reduced (10, 8);
-
-            if (kind == Kind::effect)
-                content.removeFromTop (2);
-
-            content.removeFromTop (18 + 16 + 6);
-            return content.removeFromTop (juce::jmax (0, content.getHeight() - 58));
+            content.removeFromTop (headerHeight);
+            content.removeFromBottom (footerHeight + 8);
+            return content;
         }
 
         void paint (juce::Graphics& g) override
@@ -92,14 +106,18 @@ namespace ez
 
             if (kind == Kind::add)
             {
-                g.setColour (Theme::activeFill.withAlpha (0.6f));
+                const bool lit = dropHighlight || isMouseOver();
+                g.setColour (lit ? Theme::activeFill : Theme::panel.withAlpha (0.35f));
                 g.fillRoundedRectangle (r, 6.0f);
-                g.setColour (Theme::chipBorder);
+                g.setColour (lit ? Theme::accent : Theme::border);
                 juce::Path outline, dashed;
                 outline.addRoundedRectangle (r, 6.0f);
                 const float dashes[] = { 4.0f, 3.0f };
                 juce::PathStrokeType (1.0f).createDashedStroke (dashed, outline, dashes, 2);
                 g.fillPath (dashed);
+
+                const auto centre = getLocalBounds().getCentre().toFloat();
+                Icons::draw (g, Icon::plus, juce::Rectangle<float> (18.0f, 18.0f).withCentre (centre), lit ? Theme::accent : Theme::text);
                 return;
             }
 
@@ -108,36 +126,33 @@ namespace ez
             g.setColour (Theme::border);
             g.drawRoundedRectangle (r, 6.0f, 1.0f);
 
-            auto content = getLocalBounds().reduced (10, 8);
+            // Header: the bypass button at the left of effects, remove at the right; title over subtitle
+            auto header = getLocalBounds().reduced (10, 8).removeFromTop (headerHeight);
 
             if (kind == Kind::effect)
-                content.removeFromTop (2);
-
-            // Title row (the bypass button sits at its left for effects)
-            auto title = content.removeFromTop (18);
-
-            if (kind == Kind::effect)
-                title.removeFromLeft (22);
+            {
+                header.removeFromLeft (26);
+                header.removeFromRight (24);
+            }
 
             const bool dimmed = kind == Kind::effect && ! info.isEnabled;
             g.setColour (dimmed ? Theme::textDim : Theme::text);
             g.setFont (Theme::font (Theme::baseFontSize, true));
-            g.drawText (kind == Kind::fader ? juce::String ("Volume & pan") : info.name, title, juce::Justification::centredLeft, true);
+            g.drawText (kind == Kind::fader ? juce::String ("Volume & pan") : info.name, header.removeFromTop (20), juce::Justification::centredLeft, true);
 
             g.setColour (Theme::textDim);
             g.setFont (Theme::font (Theme::smallFontSize - 0.5f));
             const auto dot = juce::String (juce::CharPointer_UTF8 (" \xc2\xb7 "));
-            const auto delay = info.latencyMs >= 1.0 ? dot + juce::String (info.latencyMs, 1) + " ms" : juce::String();   // what it adds to live playing
+            const auto delay = info.latencyMs >= 1.0 ? dot + "adds " + juce::String (juce::roundToInt (info.latencyMs)) + " ms" : juce::String();   // what it adds to live playing
             const auto subtitle = kind == Kind::instrument  ? "Instrument" + dot + info.maker + delay
-                                : kind == Kind::fader       ? juce::String ("Fader and pan")
+                                : kind == Kind::fader       ? juce::String ("Track fader")
                                 : info.skippedForLatency    ? "Skipped for low latency" + delay
                                 : dimmed                    ? "Bypassed" + dot + info.maker
                                                             : info.maker + delay;
-            g.drawText (subtitle, content.removeFromTop (16), juce::Justification::centredLeft, true);
+            g.drawText (subtitle, header.removeFromTop (16), juce::Justification::centredLeft, true);
 
             // A small picture of what it is: its live curve where it has one, else an icon
-            content.removeFromTop (6);
-            auto picture = content.removeFromTop (juce::jmax (0, content.getHeight() - 58));
+            const auto picture = pictureArea();
 
             if (kind == Kind::fader && faderValues && picture.getHeight() > 30)
             {
@@ -147,26 +162,23 @@ namespace ez
             {
                 g.setColour (Theme::display);
                 g.fillRoundedRectangle (picture.toFloat(), (float) Theme::cornerRadius);
-                const auto icon = kind == Kind::instrument ? Icon::piano : kind == Kind::fader ? Icon::sliders
-                                                                         : info.isBuiltIn ? Icon::sliders : Icon::plug;
-                Icons::draw (g, icon, picture.toFloat().withSizeKeepingCentre (22.0f, 22.0f),
-                             dimmed ? Theme::border : juce::Colour (0xff7fbfff));
+                const auto icon = kind == Kind::instrument ? Icon::piano : info.isBuiltIn ? Icon::sliders : Icon::plug;
+                const auto size = juce::jlimit (22.0f, 40.0f, picture.getHeight() * 0.3f);
+                Icons::draw (g, icon, picture.toFloat().withSizeKeepingCentre (size, size), dimmed ? Theme::border : Theme::accent);
             }
         }
 
         void paintOverChildren (juce::Graphics& g) override
         {
-            // The "move earlier" arrow is the chevron flipped
-            if (leftButton.isVisible())
-            {
-                auto area = leftButton.getBounds().toFloat();
-                g.setColour (leftButton.isEnabled() ? Theme::text : Theme::border);
-                juce::Path p;
-                p.startNewSubPath (area.getCentreX() + 3.0f, area.getCentreY() - 6.0f);
-                p.lineTo (area.getCentreX() - 3.0f, area.getCentreY());
-                p.lineTo (area.getCentreX() + 3.0f, area.getCentreY() + 6.0f);
-                g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-            }
+            if (kind != Kind::add)
+                return;
+
+            // "Add effect" under the plus, in two short lines so the card can stay slim
+            const auto centre = getLocalBounds().getCentre();
+            g.setColour (dropHighlight ? Theme::accent : Theme::textDim);
+            g.setFont (Theme::font (Theme::smallFontSize - 0.5f));
+            g.drawFittedText (dropHighlight ? "Drop to add" : "Add effect",
+                              juce::Rectangle<int> (0, centre.y + 16, getWidth(), 30).reduced (4, 0), juce::Justification::centredTop, 2);
         }
 
         void resized() override
@@ -174,30 +186,84 @@ namespace ez
             if (preview != nullptr)
                 preview->setBounds (pictureArea());
 
-            auto r = getLocalBounds().reduced (8);
-
             if (kind == Kind::add)
-            {
-                addButton.setBounds (getLocalBounds().reduced (4));
                 return;
-            }
+
+            auto r = getLocalBounds().reduced (8);
 
             if (kind == Kind::effect)
             {
-                bypassButton.setBounds (r.getX() - 2, r.getY(), 22, 22);
-                auto bottom = r.removeFromBottom (22);
-                leftButton.setBounds (bottom.removeFromLeft (24));
-                rightButton.setBounds (bottom.removeFromLeft (24));
-                removeButton.setBounds (bottom.removeFromRight (24));
-                r.removeFromBottom (6);
+                bypassButton.setBounds (r.getX(), r.getY() - 2, 24, 24);   // centred on the title line
+                removeButton.setBounds (r.getRight() - 24, r.getY() - 2, 24, 24);
+            }
+
+            auto footer = r.removeFromBottom (footerHeight);
+
+            if (kind == Kind::effect)
+            {
+                leftButton.setBounds (footer.removeFromLeft (24));
+                rightButton.setBounds (footer.removeFromLeft (24));
+                footer.removeFromLeft (8);
             }
 
             if (openButton.isVisible())
-                openButton.setBounds (r.removeFromBottom (24));
+                openButton.setBounds (kind == Kind::effect ? footer.removeFromRight (juce::jmin (footer.getWidth(), 72)) : footer);
+        }
+
+        /** Right-click: the same actions as the buttons (each button already knows how to act safely). */
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            if (! e.mods.isPopupMenu() || kind == Kind::fader)
+                return;
+
+            if (kind == Kind::add)
+                return;   // mouseUp adds, whichever button
+
+            juce::PopupMenu menu;
+            menu.addItem (1, "Open " + info.name);
+
+            if (kind == Kind::effect)
+            {
+                menu.addItem (2, info.isEnabled ? "Bypass" : "Switch on");
+                menu.addSeparator();
+                menu.addItem (3, "Move earlier", leftButton.isEnabled());
+                menu.addItem (4, "Move later", rightButton.isEnabled());
+                menu.addSeparator();
+                menu.addItem (5, "Remove");
+            }
+
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                                [safeThis = juce::Component::SafePointer<DeviceCard> (this)] (int result)
+                                {
+                                    if (safeThis == nullptr)
+                                        return;
+
+                                    IconButton* chosen[] = { nullptr, &safeThis->openButton, &safeThis->bypassButton,
+                                                             &safeThis->leftButton, &safeThis->rightButton, &safeThis->removeButton };
+
+                                    if (juce::isPositiveAndBelow (result, (int) std::size (chosen)) && chosen[result] != nullptr && chosen[result]->onClick)
+                                        chosen[result]->onClick();
+                                });
+        }
+
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            if (kind == Kind::add && onAdd && getLocalBounds().contains (e.getPosition()))
+                onAdd();
+        }
+
+        void mouseEnter (const juce::MouseEvent&) override   { if (kind == Kind::add) repaint(); }
+        void mouseExit (const juce::MouseEvent&) override    { if (kind == Kind::add) repaint(); }
+
+        void mouseDoubleClick (const juce::MouseEvent& e) override
+        {
+            if (! e.mods.isPopupMenu() && openButton.isVisible() && openButton.onClick)
+                openButton.onClick();
         }
 
     private:
         std::unique_ptr<juce::Component> preview;
+        bool dropHighlight = false;
 
         /** The track's volume as a little fader and its pan as a line from the centre. */
         void drawFader (juce::Graphics& g, juce::Rectangle<int> area)
@@ -266,6 +332,15 @@ namespace ez
             return list;
         }
 
+        DeviceCard* findAddCard() const
+        {
+            for (auto* c : cards)
+                if (c->kind == DeviceCard::Kind::add)
+                    return c;
+
+            return nullptr;
+        }
+
         void paint (juce::Graphics& g) override
         {
             const auto all = items();
@@ -288,7 +363,7 @@ namespace ez
                 auto* card = dynamic_cast<DeviceCard*> (item);
                 const auto width = card == nullptr ? VocalChainCard::preferredWidth
                                  : card->kind == DeviceCard::Kind::add ? addCardWidth
-                                 : card->kind == DeviceCard::Kind::fader ? faderCardWidth : cardWidth;
+                                 : card->kind == DeviceCard::Kind::fader ? faderCardWidth : cardWidthFor (height);
                 item->setBounds (x, 0, width, height);
                 x += width + cardGap;
             }
@@ -392,6 +467,11 @@ namespace ez
             track = focused;
             checkSoon = true;
         }
+
+        // A drag that ended without telling us (the track went away under it) doesn't leave the chain lit
+        if (dropHover)
+            if (auto* container = juce::DragAndDropContainer::findParentDragContainerFor (this); container == nullptr || ! container->isDragAndDropActive())
+                setDropHover (false);
 
         if (! std::exchange (checkSoon, false))
             return;
@@ -512,12 +592,14 @@ namespace ez
             }
 
             auto* add = chain->cards.add (new DeviceCard (DeviceCard::Kind::add, {}));
-            add->addButton.onClick = [this, add] { showAddEffectMenu (*add); };
+            add->onAdd = [this, add] { showAddEffectMenu (*add); };
             auto* fader = chain->cards.add (new DeviceCard (DeviceCard::Kind::fader, {}));
             fader->faderValues = [this, t = track] { return std::make_pair (session.getTrackVolumeDb (t), session.getTrackPan (t)); };
 
             for (auto* item : chain->items())
                 chain->addAndMakeVisible (item);
+
+            add->setDropHighlight (dropHover);   // a rebuild in the middle of a drag keeps showing where it lands
         }
 
         resized();
@@ -584,6 +666,53 @@ namespace ez
                     typeArea, juce::Justification::centredLeft, true);
         g.drawText ("Input", inputLabelArea, juce::Justification::bottomLeft, false);
         g.drawText ("Output", outputLabelArea, juce::Justification::bottomLeft, false);
+
+        // The free space after the chain says what it's for (and lights up while an effect is dragged over)
+        auto free = chainViewport.getBounds().withTrimmedLeft (chain->getWidth() + cardGap);
+
+        if (free.getWidth() >= 220)
+        {
+            free = free.withSizeKeepingCentre (juce::jmin (free.getWidth(), 300), 40).withX (free.getX() + 8);
+            g.setColour (dropHover ? Theme::accent : Theme::textDim.withAlpha (0.7f));
+            g.setFont (Theme::font (Theme::smallFontSize));
+            g.drawFittedText (dropHover ? "Drop to add it to " + session.getTrackName (getFocusedTrack ? getFocusedTrack() : track)
+                                        : "Drag effects here from the browser, or right-click a card for more",
+                              free, juce::Justification::centredLeft, 2);
+        }
+    }
+
+    //==============================================================================
+    bool DevicesView::isInterestedInDragSource (const SourceDetails& d)
+    {
+        // Effects only: an instrument makes its own track (drop it on the timeline)
+        const auto plugin = BrowserDrag::pluginIn (d.description, session);
+        const auto target = getFocusedTrack ? getFocusedTrack() : track;   // the panel's track, even between timer ticks
+        return plugin.has_value() && ! plugin->second && session.hasSong() && juce::isPositiveAndBelow (target, session.getNumAudioTracks());
+    }
+
+    void DevicesView::setDropHover (bool on)
+    {
+        dropHover = on;
+
+        if (auto* add = chain->findAddCard())
+            add->setDropHighlight (on);
+
+        repaint();
+    }
+
+    void DevicesView::itemDragEnter (const SourceDetails&)   { setDropHover (true); }
+    void DevicesView::itemDragExit (const SourceDetails&)    { setDropHover (false); }
+
+    void DevicesView::itemDropped (const SourceDetails& d)
+    {
+        setDropHover (false);
+
+        if (const auto plugin = BrowserDrag::pluginIn (d.description, session); plugin.has_value() && ! plugin->second)
+        {
+            const auto& choice = plugin->first;
+            report (session.addEffect (getFocusedTrack ? getFocusedTrack() : track, choice, choice.preset.isEmpty()),
+                    "Could not add " + (choice.preset.isNotEmpty() ? choice.preset : choice.name));
+        }
     }
 
     void DevicesView::resized()

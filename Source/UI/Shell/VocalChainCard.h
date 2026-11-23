@@ -33,7 +33,7 @@ namespace ez
         IconButton bypassButton { "Bypass", Icon::power, {}, IconButton::Style::ghost };
         IconButton openButton   { "Open", Icon::none, "Open" };
         IconButton removeButton { "Remove", Icon::close, {}, IconButton::Style::ghost };
-        IconButton leftButton   { "Move earlier", Icon::chevronRight, {}, IconButton::Style::ghost };
+        IconButton leftButton   { "Move earlier", Icon::chevronLeft, {}, IconButton::Style::ghost };
         IconButton rightButton  { "Move later", Icon::chevronRight, {}, IconButton::Style::ghost };
 
         void paint (juce::Graphics&) override;

@@ -37,6 +37,7 @@
 #include "../UI/WindowChrome.h"
 #include "../UI/Timeline/TimelineView.h"
 #include "../UI/Shell/DetailPanel.h"
+#include "../UI/Shell/DevicesView.h"
 
 namespace ez::Tests
 {
@@ -2472,6 +2473,34 @@ namespace ez::Tests
                 panel.resizeBodyTo (300);          // the user drags the edge: their size stays
                 panel.fitDefaultHeightTo (400);
                 expectEquals (panel.getPreferredHeight(), Theme::detailHeaderHeight + 300, "a dragged size doesn't follow the window");
+            }
+
+            beginTest ("Devices: an effect dragged from the browser onto the chain lands on that track, in one undo step");
+            {
+                DevicesView devices (session);
+                const int target = 0;
+                devices.getFocusedTrack = [] { return target; };
+                const auto effects = session.getAvailableEffects();
+                const auto instruments = session.getAvailableInstruments();
+                expect (! effects.isEmpty() && ! instruments.isEmpty());
+                expect (session.getNumAudioTracks() > target, "the test song has a track to drop on");
+
+                if (! effects.isEmpty() && ! instruments.isEmpty() && session.getNumAudioTracks() > target)
+                {
+                    juce::Component source;
+                    const juce::DragAndDropTarget::SourceDetails effectDrag (BrowserDrag::describePlugin (effects.getFirst(), false), &source, {});
+                    const juce::DragAndDropTarget::SourceDetails instrumentDrag (BrowserDrag::describePlugin (instruments.getFirst(), true), &source, {});
+
+                    expect (devices.isInterestedInDragSource (effectDrag));
+                    expect (! devices.isInterestedInDragSource (instrumentDrag), "an instrument makes its own track: the timeline takes it");
+
+                    const auto before = session.getEffectInfo (target).size();
+                    devices.itemDropped (effectDrag);
+                    expectEquals (session.getEffectInfo (target).size(), before + 1, "dropped at the end of the chain");
+
+                    session.getEdit()->getUndoManager().undo();
+                    expectEquals (session.getEffectInfo (target).size(), before, "one Ctrl+Z takes it off again");
+                }
             }
 
             beginTest ("Browser: every category lists something, and effects show their presets under the arrow");

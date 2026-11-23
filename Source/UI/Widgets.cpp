@@ -72,6 +72,7 @@ namespace ez
                 case Icon::flag:          return { { "M5 21V4" }, { "M5 4H16L14 8L16 12H5" } };
                 case Icon::power:         return { { "M12 2V12" }, { "M18.4 6.6A9 9 0 1 1 5.6 6.6" } };
                 case Icon::tuner:         return { { "M4 16A8 8 0 0 1 20 16" }, { "M12 16L16 9.5" }, { "M3 20H21" }, { "M12 6V8" }, { "M5.6 10L7 11" }, { "M18.4 10L17 11" } };
+                case Icon::chevronLeft:   return { { "M15 6L9 12L15 18" } };
                 case Icon::textSize:      return { { "M3 19L9 5L15 19" }, { "M5.2 14H12.8" }, { "M15 19L18.5 11L22 19" }, { "M16.3 16H20.7" } };
                 case Icon::none:          break;
             }
