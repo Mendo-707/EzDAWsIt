@@ -54,6 +54,10 @@ namespace ez
             Each is scanned only when new or changed since the last run, through Tracktion's scanner (out of
             process where available, so a broken one can't take the app down). Returns how many it scanned. */
         int registerBundledPlugins();
+
+        /** Removes remembered copies of a bundled plug-in whose files are gone, so songs find the bundled one.
+            Other missing plug-ins are kept (a drive may just be unplugged). Returns how many it removed. */
+        int forgetMissingCopiesOfBundled();
         juce::AudioDeviceManager& getDeviceManager();
 
         /** Turns on every audio and MIDI input so any of them can be picked on a track. */

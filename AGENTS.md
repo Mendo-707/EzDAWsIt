@@ -82,6 +82,7 @@ Main.cpp start-up/shut-down order: Diagnostics -> LookAndFeel -> AudioEngine -> 
 ## Pitfalls (add one line every time something goes wrong; details in docs/LESSONS.md)
 - Shipped a view with only the headline controls (twice). Follow rule 0a: list the full control set first, from the design and from other DAWs.
 - Tracktion's Compressor ratio is a slope (0.25 = 4:1): presets had it backwards and barely compressed. Check a parameter's display before writing values.
+- "No compatible plug-in format exists" = the remembered .vst3 path is gone. Missing copies of bundled plug-ins are forgotten at start-up so songs find the bundled one.
 
 - Tracktion's `modules/juce` submodule URL is SSH: clone JUCE separately over HTTPS (build.bat does).
 - `Components.h` (Tracktion example) `#include`s its own .cpp: include it in one file only (the bridge).

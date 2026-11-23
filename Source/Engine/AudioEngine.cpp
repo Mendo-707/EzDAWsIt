@@ -294,7 +294,41 @@ namespace ez
                                                                              : ": " + found.getFirst()->name));
         }
 
+        forgetMissingCopiesOfBundled();
         return scanned;
+    }
+
+    int AudioEngine::forgetMissingCopiesOfBundled()
+    {
+        // A copy of a bundled plug-in remembered from somewhere it isn't any more (a build folder, an old install):
+        // a song that names it would fail with "No compatible plug-in format". Forgotten, it finds the bundled one.
+        auto& list = engine.getPluginManager().knownPluginList;
+        const auto folder = AppPaths::getBundledPluginsFolder();
+        const auto types = list.getTypes();
+        int forgotten = 0;
+
+        for (const auto& d : types)
+        {
+            const juce::File file (d.fileOrIdentifier);
+
+            if (! juce::File::isAbsolutePath (d.fileOrIdentifier) || file.exists() || file.isAChildOf (folder))
+                continue;
+
+            const auto bundledCopy = std::any_of (types.begin(), types.end(), [&] (const juce::PluginDescription& b)
+            {
+                return b.name == d.name && b.manufacturerName == d.manufacturerName && b.isInstrument == d.isInstrument
+                        && juce::File (b.fileOrIdentifier).isAChildOf (folder) && juce::File (b.fileOrIdentifier).exists();
+            });
+
+            if (bundledCopy)
+            {
+                list.removeType (d);
+                log ("Forgot " + d.name + " at " + d.fileOrIdentifier + ": it isn't there any more, the bundled one is used");
+                ++forgotten;
+            }
+        }
+
+        return forgotten;
     }
 
     juce::String AudioEngine::pickLowLatencyDriver (const juce::StringArray& typesWithDevices, const juce::String& current)

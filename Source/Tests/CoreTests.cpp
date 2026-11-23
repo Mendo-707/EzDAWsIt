@@ -2110,6 +2110,34 @@ namespace ez::Tests
             expectEquals (pianoIndex, 3, "right after the three built-in instruments");
             expect (instruments[pianoIndex].bundled);
 
+            beginTest ("Bundled plug-ins: a remembered copy whose file is gone is forgotten, so songs load the bundled one");
+            {
+                // Aurelia remembered from an old build folder that's since been removed: songs failed to load it
+                juce::ignoreUnused (bundledFolder.getChildFile ("Aurelia 290.vst3").createDirectory());
+                const auto bundledPiano = describe ("Aurelia 290", "Aurelia Acoustics", true, bundledFolder.getChildFile ("Aurelia 290.vst3"), "Instrument");
+                const auto gonePiano = describe ("Aurelia 290", "Aurelia Acoustics", true, folder.getChildFile ("old build/Aurelia 290.vst3"), "Instrument");
+                const auto goneOther = describe ("Someone's Synth", "Other Co", true, folder.getChildFile ("unplugged drive/Other.vst3"), "Instrument");
+                list.addType (bundledPiano);
+                list.addType (gonePiano);
+                list.addType (goneOther);
+
+                expectEquals (engine.forgetMissingCopiesOfBundled(), 1);
+                const auto has = [&list] (const juce::PluginDescription& d)
+                {
+                    for (const auto& t : list.getTypes())
+                        if (t.fileOrIdentifier == d.fileOrIdentifier)
+                            return true;
+                    return false;
+                };
+                expect (! has (gonePiano), "the missing copy of a bundled plug-in is forgotten");
+                expect (has (bundledPiano), "the bundled one stays");
+                expect (has (goneOther), "other missing plug-ins stay: their drive may just be unplugged");
+
+                list.removeType (bundledPiano);
+                list.removeType (goneOther);
+                bundledFolder.getChildFile ("Aurelia 290.vst3").deleteRecursively();
+            }
+
             beginTest ("Bundled plug-ins: an empty or missing Plugins folder registers nothing and doesn't fail");
             expectEquals (engine.registerBundledPlugins(), 0);
             expect (bundledFolder.createDirectory());
