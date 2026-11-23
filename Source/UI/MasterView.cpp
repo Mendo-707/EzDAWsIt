@@ -15,6 +15,7 @@ namespace ez
     {
         using Chain = MasteringChainPlugin;
         constexpr int gap = 10;
+        constexpr juce::Point<int> knobCell { 100, 92 };   // the biggest a mastering knob gets (with its label)
         constexpr const char* noReading = "--.-";   // no reading yet (as the transport's meter)
 
         juce::String oneDecimal (float v)   { return juce::String (v, 1); }
@@ -308,7 +309,7 @@ namespace ez
             stereo->layoutRest = [this] (juce::Rectangle<int> r)
             {
                 monoBass.setBounds (r.removeFromBottom (24));
-                stereo->knobs[0]->setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth(), 90), juce::jmin (r.getHeight(), 92)));
+                stereo->knobs[0]->setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth(), knobCell.x), juce::jmin (r.getHeight(), knobCell.y)));
             };
 
             limiter = cards.add (new Card (owner, Chain::limiterModule, "Limiter", 220));
@@ -318,9 +319,11 @@ namespace ez
             limiter->layoutRest = [this] (juce::Rectangle<int> r)
             {
                 limiterMeter = r.removeFromBottom (18);
+                // Same knob size as every other card (a wide window made these two giant)
                 const auto w = r.getWidth() / 2;
-                limiter->knobs[0]->setBounds (r.removeFromLeft (w));
-                limiter->knobs[1]->setBounds (r);
+                const auto cell = [] (juce::Rectangle<int> a) { return a.withSizeKeepingCentre (juce::jmin (a.getWidth(), knobCell.x), juce::jmin (a.getHeight(), knobCell.y)); };
+                limiter->knobs[0]->setBounds (cell (r.removeFromLeft (w)));
+                limiter->knobs[1]->setBounds (cell (r));
             };
             limiter->drawExtra = nullptr;
 

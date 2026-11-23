@@ -60,6 +60,13 @@ namespace ez
         EditorTarget* getFocusedEditor() const;
         int getPreferredHeight() const;
 
+        /** Until the user drags the panel's edge, its height follows the space there is: a big screen gets a
+            roomier editor (pads, knobs and a full inspector), the minimum window keeps the timeline usable. */
+        void fitDefaultHeightTo (int mainAreaHeight);
+
+        /** What dragging the top edge does: the body becomes this tall (within limits) and stops following the window. */
+        void resizeBodyTo (int bodyHeight);
+
         void paint (juce::Graphics&) override;
         void paintOverChildren (juce::Graphics&) override;
         void resized() override;
@@ -87,6 +94,7 @@ namespace ez
         Tab tab = Tab::devices;
         te::EditItemID lastSelectedMidiClip;
         int bodyHeight = 230, bodyHeightAtDragStart = 0;
+        bool bodySizedByUser = false;
         juce::Rectangle<int> headerArea, contextArea, hintArea;
         juce::String trackName;
         juce::Colour trackColour;

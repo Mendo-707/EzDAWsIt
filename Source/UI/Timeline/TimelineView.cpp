@@ -1365,6 +1365,7 @@ namespace ez
     void TimelineView::sessionSongClosing()
     {
         view = {};
+        lastSelectedClip = {};   // IDs are per song: the next song may reuse this one
         tracksArea->clear();   // the song is still open here: don't rebuild from it
         lastStructure = {};
     }
@@ -1388,6 +1389,21 @@ namespace ez
     void TimelineView::sessionStateChanged()
     {
         checkStructureSoon = true;   // never rebuild here: we may be inside a ClipView's mouse handler
+
+        // A clip selected on its own (click, keys, the browser) makes its track the focused one, so the
+        // detail panel's title, devices and clip editor all talk about the same track
+        // Only for a single clip: Ctrl+A, a box or Shift+click spans tracks and keeps the track you clicked
+        const auto selected = session.getSelectedClips();
+        const auto single = selected.size() == 1 ? selected.getFirst()->itemID : te::EditItemID();
+
+        if (single != lastSelectedClip)
+        {
+            lastSelectedClip = single;
+
+            if (single.isValid())
+                if (const auto index = te::getAudioTracks (*session.getEdit()).indexOf (dynamic_cast<te::AudioTrack*> (selected.getFirst()->getTrack())); index >= 0)
+                    view.focusedTrack = index;
+        }
         tracksArea->refreshHeaders();
         refreshAutomationButtons();
         tracksArea->getLanes().repaint();   // selection, mute etc.

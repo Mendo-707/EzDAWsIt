@@ -553,7 +553,7 @@ namespace ez
                 stepAreas.push_back ({ 24, y, textWidth, h });
 
                 if (auto* b = buttons[(int) i])
-                    b->setBounds (24 + textWidth - buttonWidth, y + (h - 26) / 2, buttonWidth, 26);
+                    b->setBounds (24 + textWidth - buttonWidth + 2, y + (h - 26) / 2, buttonWidth - 10, 26);   // inside the step's card, not on its edge
 
                 y += h + 6;
             }

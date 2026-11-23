@@ -117,6 +117,7 @@ namespace ez
 
         juce::String lastStructure;
         int tick = 0;
+        te::EditItemID lastSelectedClip;   // a newly selected clip brings its track into focus (devices, clip editor)
         bool checkStructureSoon = false;
 
         void handleWheel (const juce::MouseEvent&, const juce::MouseWheelDetails&, int xInLanes);

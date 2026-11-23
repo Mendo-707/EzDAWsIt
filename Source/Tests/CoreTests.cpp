@@ -35,6 +35,8 @@
 #include "../Engine/MidiPatterns.h"
 #include "../Engine/DrumKits.h"
 #include "../UI/WindowChrome.h"
+#include "../UI/Timeline/TimelineView.h"
+#include "../UI/Shell/DetailPanel.h"
 
 namespace ez::Tests
 {
@@ -2410,6 +2412,66 @@ namespace ez::Tests
                 // A tutorial's steps tick from the song: "have a song open" is done now
                 const auto* beat = HelpGuide::find ("first-beat");
                 expect (beat != nullptr && beat->steps.front().isDone != nullptr && beat->steps.front().isDone (session));
+            }
+
+            beginTest ("Timeline: selecting a clip focuses its track (the detail panel named one track and edited another's clip)");
+            {
+                TimelineView timeline (session);
+                timeline.setSize (1200, 600);
+                const auto tracks = te::getAudioTracks (*session.getEdit());
+                te::Clip* clipOnAnotherTrack = nullptr;
+                int itsTrack = -1;
+
+                // Any clip on a track other than the focused one: derived from the song, not assumed
+                for (int i = 0; i < tracks.size() && clipOnAnotherTrack == nullptr; ++i)
+                    if (i != timeline.getFocusedTrack() && ! tracks[i]->getClips().isEmpty())
+                    {
+                        clipOnAnotherTrack = tracks[i]->getClips().getFirst();
+                        itsTrack = i;
+                    }
+
+                te::Clip::Ptr added;   // only if the song has no such clip: removed again below (straight on the Edit, a test fixture)
+
+                if (clipOnAnotherTrack == nullptr && tracks.size() >= 2)
+                {
+                    itsTrack = timeline.getFocusedTrack() == 1 ? 0 : 1;
+                    added = tracks[itsTrack]->insertMIDIClip ({ te::TimePosition(), te::TimePosition::fromSeconds (2.0) }, nullptr);
+                    clipOnAnotherTrack = added.get();
+                }
+
+                expect (clipOnAnotherTrack != nullptr);
+
+                if (clipOnAnotherTrack != nullptr)
+                {
+                    session.selectClip (clipOnAnotherTrack);
+                    expectEquals (timeline.getFocusedTrack(), itsTrack, "the selected clip's track is the focused one");
+
+                    // Selecting every clip spans tracks: the focused track stays where it is
+                    const auto before = timeline.getFocusedTrack();
+                    session.selectAllClips();
+                    expectEquals (timeline.getFocusedTrack(), before, "Ctrl+A doesn't move the focus");
+                    session.selectClip (nullptr);
+                }
+
+                if (added != nullptr)
+                    added->removeFromParent();
+            }
+
+            beginTest ("Detail panel: a big window gives the editors room, the smallest window keeps its old size");
+            {
+                DetailPanel panel (session);
+                panel.setOpen (true);
+                panel.fitDefaultHeightTo (400);    // 900x500: the size it always had
+                const auto small = panel.getPreferredHeight();
+                panel.fitDefaultHeightTo (940);    // 2560x1440 at 125%: pads and knobs were cut off at the old size
+                const auto big = panel.getPreferredHeight();
+                expectEquals (small, Theme::detailHeaderHeight + 230);
+                expect (big > small + 100, "a tall window opens a taller editor");
+                expect (big <= Theme::detailHeaderHeight + 420, "never more than the drag allows");
+
+                panel.resizeBodyTo (300);          // the user drags the edge: their size stays
+                panel.fitDefaultHeightTo (400);
+                expectEquals (panel.getPreferredHeight(), Theme::detailHeaderHeight + 300, "a dragged size doesn't follow the window");
             }
 
             beginTest ("Browser: every category lists something, and effects show their presets under the arrow");

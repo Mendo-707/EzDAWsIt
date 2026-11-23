@@ -202,6 +202,7 @@ namespace ez
         // The panel never squeezes the timeline below a usable height, nor the mixer below one with a send row
         // (at the 900x500 minimum, the open panel shrinks to its header in the Mix view)
         const auto mainMin = view == View::mix ? 340 : view == View::master ? 300 : 160;
+        detailPanel->fitDefaultHeightTo (r.getHeight());
         const auto panelHeight = juce::jlimit (Theme::detailHeaderHeight, juce::jmax (Theme::detailHeaderHeight, r.getHeight() - mainMin),
                                                detailPanel->getPreferredHeight());
         detailPanel->setBounds (r.removeFromBottom (panelHeight));

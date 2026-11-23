@@ -147,6 +147,12 @@ namespace ez
         return Theme::detailHeaderHeight + (open ? bodyHeight : 0);
     }
 
+    void DetailPanel::fitDefaultHeightTo (int mainAreaHeight)
+    {
+        if (! bodySizedByUser)
+            bodyHeight = juce::jlimit (230, maxBodyHeight, juce::roundToInt (mainAreaHeight * 0.38));
+    }
+
     void DetailPanel::timerCallback()
     {
         // Selecting a different MIDI clip while the panel is open brings up its notes.
@@ -193,7 +199,8 @@ namespace ez
 
     void DetailPanel::mouseDown (const juce::MouseEvent&)
     {
-        bodyHeightAtDragStart = bodyHeight;
+        // From the height on screen (a small window shows less than bodyHeight): no dead zone at the start of a drag
+        bodyHeightAtDragStart = open ? juce::jmin (bodyHeight, getHeight() - Theme::detailHeaderHeight) : bodyHeight;
     }
 
     void DetailPanel::mouseDrag (const juce::MouseEvent& e)
@@ -201,7 +208,13 @@ namespace ez
         if (! open)
             return;
 
-        const auto newHeight = juce::jlimit (minBodyHeight, maxBodyHeight, bodyHeightAtDragStart - e.getDistanceFromDragStartY());
+        resizeBodyTo (bodyHeightAtDragStart - e.getDistanceFromDragStartY());
+    }
+
+    void DetailPanel::resizeBodyTo (int newBodyHeight)
+    {
+        const auto newHeight = juce::jlimit (minBodyHeight, maxBodyHeight, newBodyHeight);
+        bodySizedByUser = true;   // the user's size stays, whatever the window does
 
         if (newHeight != bodyHeight)
         {
